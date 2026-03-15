@@ -1,0 +1,9 @@
+{
+  "name": "smartlms",
+  "private": true,
+  "scripts": {
+    "dev": "cd smartlms-frontend && npm run dev",
+    "build": "cd smartlms-frontend && npm run build",
+    "preview": "cd smartlms-frontend && npm run preview"
+  }
+}
