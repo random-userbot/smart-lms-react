@@ -2,10 +2,11 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { gamificationAPI } from '../../api/client';
+import { motion } from 'framer-motion';
 import {
     LayoutDashboard, BookOpen, GraduationCap, BarChart3,
     Users, Shield, FileText, Award, MessageSquare, Settings,
-    PlusCircle, ClipboardList, TrendingUp, Bot
+    PlusCircle, ClipboardList, TrendingUp, Bot, Sparkles
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -47,61 +48,111 @@ export default function Sidebar() {
     const links = user.role === 'admin' ? adminLinks :
         user.role === 'teacher' ? teacherLinks : studentLinks;
 
-    const linkClasses = (isActive) =>
-        `flex items-center gap-5 px-6 py-4 rounded-[1.25rem] text-lg font-black transition-all group ${
-            isActive
-                ? 'bg-accent-light text-accent shadow-sm ring-1 ring-accent/20'
-                : 'text-text-secondary hover:bg-surface-alt hover:text-text'
-        }`;
-
     return (
-        <aside className="w-[340px] shrink-0 bg-surface border-r border-border h-full flex flex-col py-8 px-6 overflow-y-auto hidden xl:flex shadow-sm">
+        <aside className="w-[280px] shrink-0 bg-surface border-r border-border h-full flex flex-col py-6 px-4 overflow-y-auto hidden xl:flex"
+            style={{
+                boxShadow: '1px 0 0 0 var(--color-border-light)',
+            }}>
             {/* Navigation */}
-            <div className="space-y-2">
-                <div className="px-6 py-3 text-sm font-black text-text-muted uppercase tracking-[0.2em] mb-4">Navigation</div>
-                {links.map(link => (
+            <div className="space-y-1">
+                <div className="px-4 py-2 text-[11px] font-black text-text-muted uppercase tracking-[0.15em] mb-2">Navigation</div>
+                {links.map((link, i) => (
                     <NavLink
                         key={link.to}
                         to={link.to}
-                        className={({ isActive }) => linkClasses(isActive)}
+                        className={({ isActive }) =>
+                            `flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200 group relative ${
+                                isActive
+                                    ? 'bg-accent-light text-accent font-bold'
+                                    : 'text-text-secondary hover:bg-surface-alt hover:text-text'
+                            }`
+                        }
                     >
-                        <link.icon size={26} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
-                        {link.label}
+                        {({ isActive }) => (
+                            <>
+                                {isActive && (
+                                    <motion.div
+                                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] rounded-r-full bg-accent"
+                                        layoutId="sidebar-indicator"
+                                        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                                    />
+                                )}
+                                <link.icon size={20} strokeWidth={isActive ? 2.5 : 2} className="group-hover:scale-110 transition-transform shrink-0" />
+                                {link.label}
+                            </>
+                        )}
                     </NavLink>
                 ))}
             </div>
 
             {/* Student learning section */}
             {user.role === 'student' && (
-                <div className="mt-8 pt-6 border-t border-border space-y-2">
-                    <div className="px-6 py-3 text-sm font-black text-text-muted uppercase tracking-[0.2em] mb-4">Learning</div>
-                    <NavLink to="/ai-tutor" className={({ isActive }) => linkClasses(isActive)}>
-                        <Bot size={26} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" /> AI Tutor
+                <div className="mt-6 pt-4 border-t border-border space-y-1">
+                    <div className="px-4 py-2 text-[11px] font-black text-text-muted uppercase tracking-[0.15em] mb-2">Learning</div>
+                    <NavLink to="/ai-tutor" className={({ isActive }) =>
+                        `flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all group relative ${
+                            isActive ? 'bg-accent-light text-accent font-bold' : 'text-text-secondary hover:bg-surface-alt hover:text-text'
+                        }`
+                    }>
+                        {({ isActive }) => (
+                            <>
+                                {isActive && (
+                                    <motion.div
+                                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] rounded-r-full bg-accent"
+                                        layoutId="sidebar-indicator"
+                                        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                                    />
+                                )}
+                                <Bot size={20} strokeWidth={isActive ? 2.5 : 2} className="group-hover:scale-110 transition-transform" />
+                                AI Tutor
+                                <Sparkles size={14} className="ml-auto text-accent opacity-60" />
+                            </>
+                        )}
                     </NavLink>
-                    <NavLink to="/leaderboard" className={({ isActive }) => linkClasses(isActive)}>
-                        <Award size={26} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" /> Leaderboard
+                    <NavLink to="/leaderboard" className={({ isActive }) =>
+                        `flex items-center gap-3.5 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all group relative ${
+                            isActive ? 'bg-accent-light text-accent font-bold' : 'text-text-secondary hover:bg-surface-alt hover:text-text'
+                        }`
+                    }>
+                        {({ isActive }) => (
+                            <>
+                                {isActive && (
+                                    <motion.div
+                                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] rounded-r-full bg-accent"
+                                        layoutId="sidebar-indicator"
+                                        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                                    />
+                                )}
+                                <Award size={20} strokeWidth={isActive ? 2.5 : 2} className="group-hover:scale-110 transition-transform" />
+                                Leaderboard
+                            </>
+                        )}
                     </NavLink>
                 </div>
             )}
 
             {/* Gamification card */}
             {user.role === 'student' && gamification && (
-                <div className="mt-auto pt-8">
-                  <div className="p-5 bg-surface-alt rounded-2xl border border-border text-center shadow-sm relative overflow-hidden group">
-                      <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                      <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1.5">Your Level</div>
-                      <div className="text-3xl font-black text-accent leading-tight">{gamification.level}</div>
-                      
-                      <div className="mt-4 h-2 bg-border rounded-full overflow-hidden w-full relative shadow-inner">
-                          <div
-                              className="h-full bg-gradient-to-r from-accent to-violet-500 rounded-full transition-all duration-700 ease-out relative"
-                              style={{ width: `${gamification.points % 100}%` }}
-                          >
-                            <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                          </div>
-                      </div>
-                      <div className="text-xs font-bold text-text-secondary mt-3"><span className="text-text font-black">{gamification.points}</span> XP Total</div>
-                  </div>
+                <div className="mt-auto pt-6">
+                    <div className="p-4 rounded-2xl border border-border text-center relative overflow-hidden group"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.12))',
+                        }}>
+                        <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Your Level</div>
+                        <div className="text-2xl font-black text-accent leading-tight">{gamification.level}</div>
+                        
+                        <div className="mt-3 h-1.5 bg-border rounded-full overflow-hidden w-full relative">
+                            <motion.div
+                                className="h-full rounded-full relative"
+                                style={{ background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)' }}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${gamification.points % 100}%` }}
+                                transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
+                            />
+                        </div>
+                        <div className="text-xs font-bold text-text-secondary mt-2"><span className="text-text font-black">{gamification.points}</span> XP</div>
+                    </div>
                 </div>
             )}
         </aside>

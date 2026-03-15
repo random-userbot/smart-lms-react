@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, Mail, Lock, Eye, EyeOff, BookOpen } from 'lucide-react';
+import { LogIn, Mail, Lock, Eye, EyeOff, BookOpen, ArrowRight } from 'lucide-react';
+import { motion } from 'framer-motion';
 import ThemeToggle from '../components/layout/ThemeToggle';
+import { AnimatedGradient } from '../components/ui/AnimatedGradient';
 
 export default function Login() {
     const { login } = useAuth();
@@ -28,46 +30,52 @@ export default function Login() {
 
     return (
         <div className="w-full min-h-screen flex flex-col p-6 bg-surface-alt relative overflow-hidden font-sans">
-            
+            <AnimatedGradient intensity="low" />
+
             {/* Top Navbar Header */}
             <div className="w-full flex justify-between items-center max-w-7xl mx-auto py-6 relative z-20">
-                <Link to="/" className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg">
-                        <BookOpen size={24} className="text-white" strokeWidth={2.5} />
+                <Link to="/" className="flex items-center gap-3 group">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg group-hover:shadow-accent/30 group-hover:scale-105 transition-all">
+                        <BookOpen size={22} className="text-white" strokeWidth={2.5} />
                     </div>
-                    <span className="text-2xl font-black tracking-tight text-text">Smart<span className="text-accent">LMS</span></span>
+                    <span className="text-2xl font-black tracking-tight text-text">Smart<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500">LMS</span></span>
                 </Link>
-                <div className="flex bg-surface px-4 py-2 rounded-2xl ring-1 ring-border shadow-sm">
-                    <ThemeToggle />
-                </div>
+                <ThemeToggle />
             </div>
-
-            {/* Background decoration */}
-            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-accent/10 rounded-full blur-[120px] pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
-            <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-violet-500/10 rounded-full blur-[120px] pointer-events-none translate-y-1/2 -translate-x-1/2"></div>
 
             {/* Main Form Content */}
             <div className="flex-1 flex items-center justify-center relative z-10 w-full mb-10">
-                <div className="w-full max-w-[440px] bg-surface rounded-2xl shadow-xl border border-border p-8 relative">
+                <motion.div 
+                    className="w-full max-w-[440px] auth-card p-8 md:p-10 relative"
+                    initial={{ opacity: 0, y: 24, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+                >
+                    {/* Subtle top accent line */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 opacity-60" />
                     
-                    <div className="text-center mb-8">
-                        <h1 className="text-3xl font-black text-text mb-2 tracking-tight">Welcome Back</h1>
-                        <p className="text-text-secondary text-base font-medium">Log in to your account</p>
+                    <div className="text-center mb-8 mt-2">
+                        <h1 className="text-3xl font-black text-text mb-3 tracking-tight">Welcome Back</h1>
+                        <p className="text-text-muted text-base font-medium">Log in to continue learning</p>
                     </div>
 
                     {error && (
-                        <div className="mb-6 p-4 bg-danger-light border-l-4 border-danger text-danger rounded-xl text-sm font-bold">
+                        <motion.div 
+                            className="mb-6 p-4 bg-danger-light border-l-4 border-danger text-danger rounded-xl text-sm font-bold"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                        >
                             {error}
-                        </div>
+                        </motion.div>
                     )}
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         <div className="space-y-2">
                             <label className="block text-sm font-bold text-text mb-2">Username</label>
-                            <div className="input-icon-wrapper relative">
-                                <Mail size={18} className="absolute left-4 opacity-50" />
+                            <div className="relative">
+                                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
                                 <input
-                                    className="w-full bg-surface border border-border focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-xl py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all shadow-sm"
+                                    className="input-premium"
                                     type="text"
                                     placeholder="Enter your username"
                                     value={form.username}
@@ -79,10 +87,11 @@ export default function Login() {
 
                         <div className="space-y-2">
                             <label className="block text-sm font-bold text-text mb-2">Password</label>
-                            <div className="input-icon-wrapper relative">
-                                <Lock size={18} className="absolute left-4 opacity-50" />
+                            <div className="relative">
+                                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
                                 <input
-                                    className="w-full bg-surface border border-border focus:border-accent focus:ring-2 focus:ring-accent/20 rounded-xl py-3 pl-10 pr-12 text-sm font-medium outline-none transition-all shadow-sm"
+                                    className="input-premium"
+                                    style={{ paddingRight: '3rem' }}
                                     type={showPassword ? "text" : "password"}
                                     placeholder="Enter your password"
                                     value={form.password}
@@ -91,7 +100,7 @@ export default function Login() {
                                 />
                                 <button 
                                     type="button" 
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text transition-colors p-1"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text transition-colors p-1.5 rounded-lg hover:bg-surface-alt"
                                     onClick={() => setShowPassword(!showPassword)}
                                 >
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -100,27 +109,32 @@ export default function Login() {
                         </div>
 
                         <button
-                            className="w-full bg-accent hover:bg-accent-hover text-white rounded-xl py-3 text-base font-bold shadow-md shadow-accent/20 hover:shadow-lg transition-all active:scale-[0.98] mt-6 flex items-center justify-center gap-2"
+                            className="w-full rounded-xl py-3.5 text-base font-bold shadow-lg transition-all active:scale-[0.98] mt-6 flex items-center justify-center gap-2 text-white relative overflow-hidden group"
+                            style={{ 
+                                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)',
+                            }}
                             type="submit"
                             disabled={loading}
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                             ) : (
-                                <>Log In <LogIn size={18} /></>
+                                <span className="relative z-10 flex items-center gap-2">Log In <ArrowRight size={18} /></span>
                             )}
+                            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                         </button>
                     </form>
 
                     <div className="mt-8 pt-6 border-t border-border text-center">
-                        <p className="text-text-secondary font-medium text-sm">
+                        <p className="text-text-muted font-medium text-sm">
                             Don't have an account?{' '}
                             <Link to="/register" className="text-accent font-bold hover:text-accent-hover transition-colors underline decoration-1 underline-offset-4 decoration-accent/30 hover:decoration-accent">
                                 Sign up for free
                             </Link>
                         </p>
                     </div>
-                </div>
+                </motion.div>
             </div>
         </div>
     );
