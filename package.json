@@ -1,9 +1,10 @@
 {
   "name": "smartlms",
   "private": true,
+  "workspaces": ["smartlms-frontend"],
   "scripts": {
-    "dev": "cd smartlms-frontend && npm run dev",
-    "build": "cd smartlms-frontend && npm run build",
-    "preview": "cd smartlms-frontend && npm run preview"
+    "dev": "npm run dev --workspace=smartlms-frontend",
+    "build": "npm run build --workspace=smartlms-frontend",
+    "preview": "npm run preview --workspace=smartlms-frontend"
   }
 }
