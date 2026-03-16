@@ -1,12 +1,12 @@
 {
-  "name": "smartlms-frontend",
+  "name": "smartlms-root",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "build:dev": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
