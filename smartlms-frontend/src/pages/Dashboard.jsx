@@ -83,7 +83,7 @@ function StudentDashboard() {
                         <div className="text-sm font-black text-text-muted uppercase tracking-widest">Avg Quiz Score</div>
                     </div>
                     <div className="bg-surface rounded-3xl p-8 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-1 transition-transform">
-                        <div className="w-14 h-14 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center mb-6">
+                        <div className="w-14 h-14 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-6">
                             <Award size={28} />
                         </div>
                         <div className="text-4xl font-black text-text mb-2 tracking-tight">{analytics?.engagement?.total_sessions || 0}</div>
@@ -201,7 +201,7 @@ function TeacherDashboard() {
                     <div className="stat-label">Total Lectures</div>
                 </div>
                 <div className="stat-card stat-card-accent">
-                    <div className="w-14 h-14 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-6">
                         <TrendingUp size={28} />
                     </div>
                     <div className="stat-value">--</div>
@@ -304,7 +304,7 @@ function AdminDashboard() {
                     <div className="stat-label">Teachers</div>
                 </div>
                 <div className="stat-card stat-card-accent">
-                    <div className="w-14 h-14 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-6">
                         <BookOpen size={28} />
                     </div>
                     <div className="stat-value">{stats?.courses || 0}</div>

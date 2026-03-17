@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ActivityProvider } from './context/ActivityTracker';
 import { ThemeProvider } from './context/ThemeContext';
+import { AnimatePresence, motion } from 'framer-motion';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import Landing from './pages/Landing';
@@ -27,7 +28,7 @@ function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
   if (loading) return (
     <div className="min-h-[50vh] flex items-center justify-center">
-      <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+      <div className="w-12 h-12 border-4 border-accent-light border-t-accent rounded-full animate-spin"></div>
     </div>
   );
   if (!user) return <Navigate to="/login" replace />;
@@ -51,97 +52,113 @@ function AppLayout({ children, showSidebar = true }) {
   );
 }
 
+function PageTransitionWrapper({ children }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 function AppRoutes() {
   const { user } = useAuth();
+  const location = useLocation();
 
   return (
-    <Routes>
-      {/* Public */}
-      <Route path="/" element={user ? <Navigate to="/dashboard" /> : <><Navbar /><Landing /></>} />
-      <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <><Navbar /><Login /></>} />
-      <Route path="/register" element={user ? <Navigate to="/dashboard" /> : <><Navbar /><Register /></>} />
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        {/* Public */}
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <PageTransitionWrapper><Navbar /><Landing /></PageTransitionWrapper>} />
+        <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <PageTransitionWrapper><Login /></PageTransitionWrapper>} />
+        <Route path="/register" element={user ? <Navigate to="/dashboard" /> : <PageTransitionWrapper><Register /></PageTransitionWrapper>} />
 
-      {/* Dashboard */}
-      <Route path="/dashboard" element={
-        <ProtectedRoute>
-          <AppLayout><Dashboard /></AppLayout>
-        </ProtectedRoute>
-      } />
+        {/* Dashboard */}
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <AppLayout><PageTransitionWrapper><Dashboard /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
 
-      {/* Student */}
-      <Route path="/my-courses" element={
-        <ProtectedRoute roles={['student']}>
-          <AppLayout><StudentCourses /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/courses/:courseId" element={
-        <ProtectedRoute>
-          <AppLayout><CoursePage /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/lectures/:lectureId" element={
-        <ProtectedRoute>
-          <AppLayout showSidebar={false}><LecturePage /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/my-analytics" element={
-        <ProtectedRoute roles={['student']}>
-          <AppLayout><StudentAnalytics /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/profile" element={
-        <ProtectedRoute>
-          <AppLayout><StudentProfile /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/leaderboard" element={
-        <ProtectedRoute roles={['student']}>
-          <AppLayout><Leaderboard /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/ai-tutor" element={
-        <ProtectedRoute roles={['student']}>
-          <AppLayout><AITutor /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/messages" element={
-        <ProtectedRoute>
-          <AppLayout><Messages /></AppLayout>
-        </ProtectedRoute>
-      } />
+        {/* Student */}
+        <Route path="/my-courses" element={
+          <ProtectedRoute roles={['student']}>
+            <AppLayout><PageTransitionWrapper><StudentCourses /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/courses/:courseId" element={
+          <ProtectedRoute>
+            <AppLayout><PageTransitionWrapper><CoursePage /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/lectures/:lectureId" element={
+          <ProtectedRoute>
+            <AppLayout showSidebar={false}><PageTransitionWrapper><LecturePage /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/my-analytics" element={
+          <ProtectedRoute roles={['student']}>
+            <AppLayout><PageTransitionWrapper><StudentAnalytics /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <AppLayout><PageTransitionWrapper><StudentProfile /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/leaderboard" element={
+          <ProtectedRoute roles={['student']}>
+            <AppLayout><PageTransitionWrapper><Leaderboard /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/ai-tutor" element={
+          <ProtectedRoute roles={['student']}>
+            <AppLayout><PageTransitionWrapper><AITutor /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/messages" element={
+          <ProtectedRoute>
+            <AppLayout><PageTransitionWrapper><Messages /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
 
-      {/* Teacher */}
-      <Route path="/manage-courses" element={
-        <ProtectedRoute roles={['teacher']}>
-          <AppLayout><TeacherCourses /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/manage-courses/:courseId" element={
-        <ProtectedRoute roles={['teacher']}>
-          <AppLayout><EditCourse /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/teaching-dashboard" element={
-        <ProtectedRoute roles={['teacher']}>
-          <AppLayout><TeachingDashboard /></AppLayout>
-        </ProtectedRoute>
-      } />
+        {/* Teacher */}
+        <Route path="/manage-courses" element={
+          <ProtectedRoute roles={['teacher']}>
+            <AppLayout><PageTransitionWrapper><TeacherCourses /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/manage-courses/:courseId" element={
+          <ProtectedRoute roles={['teacher']}>
+            <AppLayout><PageTransitionWrapper><EditCourse /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/teaching-dashboard" element={
+          <ProtectedRoute roles={['teacher']}>
+            <AppLayout><PageTransitionWrapper><TeachingDashboard /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
 
-      {/* Admin */}
-      <Route path="/admin/users" element={
-        <ProtectedRoute roles={['admin']}>
-          <AppLayout><AdminUsers /></AppLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/teachers" element={
-        <ProtectedRoute roles={['admin']}>
-          <AppLayout><AdminTeachers /></AppLayout>
-        </ProtectedRoute>
-      } />
+        {/* Admin */}
+        <Route path="/admin/users" element={
+          <ProtectedRoute roles={['admin']}>
+            <AppLayout><PageTransitionWrapper><AdminUsers /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/teachers" element={
+          <ProtectedRoute roles={['admin']}>
+            <AppLayout><PageTransitionWrapper><AdminTeachers /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
 
-      {/* Catch all */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Catch all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AnimatePresence>
   );
 }
 

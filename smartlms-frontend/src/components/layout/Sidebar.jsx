@@ -5,8 +5,8 @@ import { gamificationAPI } from '../../api/client';
 import { motion } from 'framer-motion';
 import {
     LayoutDashboard, BookOpen, GraduationCap, BarChart3,
-    Users, Shield, FileText, Award, MessageSquare, Settings,
-    PlusCircle, ClipboardList, TrendingUp, Bot, Sparkles
+    Users, Settings, Award, MessageSquare,
+    TrendingUp, Bot, Sparkles
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -49,14 +49,11 @@ export default function Sidebar() {
         user.role === 'teacher' ? teacherLinks : studentLinks;
 
     return (
-        <aside className="w-[280px] shrink-0 bg-surface border-r border-border h-full flex flex-col py-6 px-4 overflow-y-auto hidden xl:flex"
-            style={{
-                boxShadow: '1px 0 0 0 var(--color-border-light)',
-            }}>
+        <aside className="w-[280px] shrink-0 bg-surface border-r border-border h-full flex flex-col py-6 px-4 overflow-y-auto hidden xl:flex">
             {/* Navigation */}
             <div className="space-y-1">
                 <div className="px-4 py-2 text-[11px] font-black text-text-muted uppercase tracking-[0.15em] mb-2">Navigation</div>
-                {links.map((link, i) => (
+                {links.map((link) => (
                     <NavLink
                         key={link.to}
                         to={link.to}
@@ -134,18 +131,14 @@ export default function Sidebar() {
             {/* Gamification card */}
             {user.role === 'student' && gamification && (
                 <div className="mt-auto pt-6">
-                    <div className="p-4 rounded-2xl border border-border text-center relative overflow-hidden group"
-                        style={{
-                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.12))',
-                        }}>
+                    <div className="p-4 rounded-2xl border border-border text-center relative overflow-hidden group bg-accent-light">
                         <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                         <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Your Level</div>
                         <div className="text-2xl font-black text-accent leading-tight">{gamification.level}</div>
                         
                         <div className="mt-3 h-1.5 bg-border rounded-full overflow-hidden w-full relative">
                             <motion.div
-                                className="h-full rounded-full relative"
-                                style={{ background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)' }}
+                                className="h-full rounded-full bg-accent"
                                 initial={{ width: 0 }}
                                 animate={{ width: `${gamification.points % 100}%` }}
                                 transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}

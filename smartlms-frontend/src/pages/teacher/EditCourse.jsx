@@ -157,7 +157,7 @@ export default function EditCourse() {
                                         </div>
 
                                         <div className="flex items-center gap-3 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity mt-4 sm:mt-0 justify-end w-full sm:w-auto border-t sm:border-t-0 border-border pt-4 sm:pt-0">
-                                            <button className="btn btn-sm bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200" title="Generate AI Quiz" onClick={() => setShowAIQuiz({ open: true, lectureId: l.id })}>
+                                            <button className="btn btn-sm bg-accent-light text-accent hover:bg-accent hover:text-white border-accent/20" title="Generate AI Quiz" onClick={() => setShowAIQuiz({ open: true, lectureId: l.id })}>
                                                 <Sparkles size={16} /> AI Quiz
                                             </button>
                                             <button className="btn btn-sm bg-danger-light text-danger hover:bg-danger hover:text-white border-danger/20" title="Delete Lecture" onClick={() => handleDeleteLecture(l.id)}>
@@ -248,7 +248,7 @@ export default function EditCourse() {
                     <div className="bg-surface rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden transform transition-all scale-in-center border border-border" onClick={e => e.stopPropagation()}>
                         <div className="p-8 md:p-10 border-b border-border bg-surface-alt">
                             <h2 className="text-3xl font-black text-text flex items-center gap-3 mb-2">
-                                <Sparkles className="text-violet-500" size={32} /> Generate AI Quiz
+                                <Sparkles className="text-accent" size={32} /> Generate AI Quiz
                             </h2>
                             <p className="text-text-secondary text-base mt-2 font-medium">
                                 AI will generate quiz questions from the lecture transcript using ICAP-aligned question types.

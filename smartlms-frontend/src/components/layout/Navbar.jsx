@@ -68,21 +68,17 @@ export default function Navbar() {
     };
 
     return (
-        <nav className="sticky top-0 z-50 w-full border-b border-border transition-colors h-16 md:h-[72px] flex items-center"
-            style={{
-                background: 'color-mix(in srgb, var(--color-surface) 85%, transparent)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-            }}>
+        <nav className="sticky top-0 z-50 w-full border-b border-border transition-colors h-16 md:h-[72px] flex items-center bg-surface/85 backdrop-blur-xl"
+            style={{ WebkitBackdropFilter: 'blur(20px) saturate(180%)' }}>
             <div className="max-w-[1440px] w-full mx-auto px-6 md:px-10 flex items-center justify-between">
                 
                 {/* Logo */}
                 <Link to={user ? '/dashboard' : '/'} className="flex items-center gap-3 group">
-                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:scale-105 transition-all duration-300">
+                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:shadow-accent group-hover:scale-105 transition-all duration-300">
                         <BookOpen size={20} className="text-white" strokeWidth={2.5} />
                     </div>
                     <span className="text-xl md:text-2xl font-extrabold tracking-tight text-text">
-                        Smart<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500">LMS</span>
+                        Smart<span className="text-accent">LMS</span>
                     </span>
                 </Link>
 
@@ -98,11 +94,7 @@ export default function Navbar() {
                             <Link to="/login" className="px-5 py-2 text-sm font-bold text-text-secondary hover:text-text transition-colors rounded-lg hover:bg-surface-alt">
                                 Log in
                             </Link>
-                            <Link to="/register" className="px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-0.5"
-                                style={{ 
-                                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                    boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)',
-                                }}>
+                            <Link to="/register" className="btn btn-primary px-5 py-2.5 text-sm">
                                 Sign up
                             </Link>
                         </div>
@@ -118,7 +110,7 @@ export default function Navbar() {
 
                             {/* Icon Buttons */}
                             <button
-                                className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-surface-alt transition-all relative"
+                                className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light transition-all relative"
                                 onClick={() => navigate('/messages')}
                                 title="Messages"
                             >
@@ -131,7 +123,7 @@ export default function Navbar() {
                             </button>
 
                             <button
-                                className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-surface-alt transition-all relative"
+                                className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light transition-all relative"
                                 onClick={() => navigate('/dashboard')}
                                 title="Notifications"
                             >
@@ -147,7 +139,7 @@ export default function Navbar() {
                                     onClick={() => setDropdownOpen(!dropdownOpen)}
                                     className="flex items-center gap-2.5 pl-1 pr-3 py-1 border border-border rounded-xl hover:bg-surface-alt hover:border-accent/30 transition-all focus:ring-2 focus:ring-accent/20 outline-none bg-surface"
                                 >
-                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent to-violet-500 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                                    <div className="w-8 h-8 rounded-lg bg-accent text-white font-bold flex items-center justify-center text-sm shadow-sm">
                                         {user.full_name?.charAt(0)?.toUpperCase() || 'U'}
                                     </div>
                                     <div className="flex flex-col items-start pr-0.5 hidden lg:flex">
@@ -182,7 +174,7 @@ export default function Navbar() {
                                                     { icon: Activity, label: 'My Analytics', path: '/my-analytics' },
                                                     { icon: Settings, label: 'Settings', path: '/profile' },
                                                 ].map(item => (
-                                                    <button key={item.path + item.label} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-alt hover:text-accent rounded-xl transition-colors text-left" onClick={() => { navigate(item.path); setDropdownOpen(false); }}>
+                                                    <button key={item.path + item.label} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent-light hover:text-accent rounded-xl transition-colors text-left" onClick={() => { navigate(item.path); setDropdownOpen(false); }}>
                                                         <item.icon size={16} strokeWidth={2} /> {item.label}
                                                         {item.badge > 0 && <span className="ml-auto bg-accent-light text-accent text-xs font-black px-2 py-0.5 rounded-md">{item.badge}</span>}
                                                     </button>

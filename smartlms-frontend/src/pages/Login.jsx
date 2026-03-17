@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, Mail, Lock, Eye, EyeOff, BookOpen, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, BookOpen, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ThemeToggle from '../components/layout/ThemeToggle';
 import { AnimatedGradient } from '../components/ui/AnimatedGradient';
@@ -32,18 +32,18 @@ export default function Login() {
         <div className="w-full min-h-screen flex flex-col p-6 bg-surface-alt relative overflow-hidden font-sans">
             <AnimatedGradient intensity="low" />
 
-            {/* Top Navbar Header */}
+            {/* Top Header */}
             <div className="w-full flex justify-between items-center max-w-7xl mx-auto py-6 relative z-20">
                 <Link to="/" className="flex items-center gap-3 group">
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg group-hover:shadow-accent/30 group-hover:scale-105 transition-all">
+                    <div className="w-11 h-11 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:shadow-accent group-hover:scale-105 transition-all">
                         <BookOpen size={22} className="text-white" strokeWidth={2.5} />
                     </div>
-                    <span className="text-2xl font-black tracking-tight text-text">Smart<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500">LMS</span></span>
+                    <span className="text-2xl font-black tracking-tight text-text">Smart<span className="text-accent">LMS</span></span>
                 </Link>
                 <ThemeToggle />
             </div>
 
-            {/* Main Form Content */}
+            {/* Main Form */}
             <div className="flex-1 flex items-center justify-center relative z-10 w-full mb-10">
                 <motion.div 
                     className="w-full max-w-[440px] auth-card p-8 md:p-10 relative"
@@ -51,8 +51,7 @@ export default function Login() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                    {/* Subtle top accent line */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 opacity-60" />
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-accent opacity-60" />
                     
                     <div className="text-center mb-8 mt-2">
                         <h1 className="text-3xl font-black text-text mb-3 tracking-tight">Welcome Back</h1>
@@ -70,12 +69,12 @@ export default function Login() {
                     )}
 
                     <form onSubmit={handleSubmit} className="space-y-5">
-                        <div className="space-y-2">
+                        <div className="input-group">
                             <label className="block text-sm font-bold text-text mb-2">Username</label>
-                            <div className="relative">
-                                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
+                            <div className="input-icon-wrapper">
+                                <Mail size={18} />
                                 <input
-                                    className="input-premium"
+                                    className="input"
                                     type="text"
                                     placeholder="Enter your username"
                                     value={form.username}
@@ -85,12 +84,12 @@ export default function Login() {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="input-group">
                             <label className="block text-sm font-bold text-text mb-2">Password</label>
-                            <div className="relative">
-                                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
+                            <div className="input-icon-wrapper relative">
+                                <Lock size={18} />
                                 <input
-                                    className="input-premium"
+                                    className="input"
                                     style={{ paddingRight: '3rem' }}
                                     type={showPassword ? "text" : "password"}
                                     placeholder="Enter your password"
@@ -109,20 +108,15 @@ export default function Login() {
                         </div>
 
                         <button
-                            className="w-full rounded-xl py-3.5 text-base font-bold shadow-lg transition-all active:scale-[0.98] mt-6 flex items-center justify-center gap-2 text-white relative overflow-hidden group"
-                            style={{ 
-                                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)',
-                            }}
+                            className="btn btn-primary btn-lg w-full mt-6 shadow-accent"
                             type="submit"
                             disabled={loading}
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                             ) : (
-                                <span className="relative z-10 flex items-center gap-2">Log In <ArrowRight size={18} /></span>
+                                <span className="flex items-center gap-2">Log In <ArrowRight size={18} /></span>
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                         </button>
                     </form>
 

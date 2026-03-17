@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, GraduationCap, BookOpen, Mail, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { GraduationCap, BookOpen, Mail, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ThemeToggle from '../components/layout/ThemeToggle';
 import { AnimatedGradient } from '../components/ui/AnimatedGradient';
@@ -34,18 +34,18 @@ export default function Register() {
         <div className="w-full min-h-screen flex flex-col p-6 bg-surface-alt relative overflow-hidden font-sans">
             <AnimatedGradient intensity="low" />
 
-            {/* Top Navbar Header */}
+            {/* Top Header */}
             <div className="w-full flex justify-between items-center max-w-7xl mx-auto py-6 relative z-20">
                 <Link to="/" className="flex items-center gap-3 group">
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg group-hover:shadow-accent/30 group-hover:scale-105 transition-all">
+                    <div className="w-11 h-11 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:shadow-accent group-hover:scale-105 transition-all">
                         <BookOpen size={22} className="text-white" strokeWidth={2.5} />
                     </div>
-                    <span className="text-2xl font-black tracking-tight text-text">Smart<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500">LMS</span></span>
+                    <span className="text-2xl font-black tracking-tight text-text">Smart<span className="text-accent">LMS</span></span>
                 </Link>
                 <ThemeToggle />
             </div>
 
-            {/* Main Form Content */}
+            {/* Main Form */}
             <div className="flex-1 flex items-center justify-center relative z-10 w-full mb-10 pt-4 pb-10">
                 <motion.div 
                     className="w-full max-w-[500px] auth-card p-8 md:p-10 relative"
@@ -53,8 +53,7 @@ export default function Register() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                    {/* Subtle top accent line */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 opacity-60" />
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-accent opacity-60" />
                     
                     <div className="text-center mb-8 mt-2">
                         <h1 className="text-3xl font-black text-text mb-3 tracking-tight">Create Account</h1>
@@ -72,71 +71,44 @@ export default function Register() {
                     )}
 
                     <form onSubmit={handleSubmit} className="space-y-5">
-                        
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
+                            <div className="input-group">
                                 <label className="block text-sm font-bold text-text mb-1">Full Name</label>
-                                <div className="relative">
-                                    <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
-                                    <input
-                                        className="input-premium"
-                                        placeholder="Your full name"
-                                        value={form.full_name}
-                                        onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                                        required
-                                    />
+                                <div className="input-icon-wrapper">
+                                    <User size={18} />
+                                    <input className="input" placeholder="Your full name"
+                                        value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
                                 </div>
                             </div>
-
-                            <div className="space-y-2">
+                            <div className="input-group">
                                 <label className="block text-sm font-bold text-text mb-1">Username</label>
-                                <div className="relative">
-                                    <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
-                                    <input
-                                        className="input-premium"
-                                        placeholder="Choose username"
-                                        value={form.username}
-                                        onChange={(e) => setForm({ ...form, username: e.target.value })}
-                                        required
-                                    />
+                                <div className="input-icon-wrapper">
+                                    <User size={18} />
+                                    <input className="input" placeholder="Choose username"
+                                        value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
                                 </div>
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="input-group">
                             <label className="block text-sm font-bold text-text mb-1">Email Address</label>
-                            <div className="relative">
-                                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
-                                <input
-                                    className="input-premium"
-                                    type="email"
-                                    placeholder="your@email.com"
-                                    value={form.email}
-                                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                                    required
-                                />
+                            <div className="input-icon-wrapper">
+                                <Mail size={18} />
+                                <input className="input" type="email" placeholder="your@email.com"
+                                    value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="input-group">
                             <label className="block text-sm font-bold text-text mb-1">Password</label>
-                            <div className="relative">
-                                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-60" />
-                                <input
-                                    className="input-premium"
-                                    style={{ paddingRight: '3rem' }}
-                                    type={showPassword ? "text" : "password"}
-                                    placeholder="Min 6 characters"
-                                    value={form.password}
-                                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                                    required
-                                    minLength={6}
-                                />
-                                <button 
-                                    type="button" 
+                            <div className="input-icon-wrapper relative">
+                                <Lock size={18} />
+                                <input className="input" style={{ paddingRight: '3rem' }}
+                                    type={showPassword ? "text" : "password"} placeholder="Min 6 characters"
+                                    value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={6} />
+                                <button type="button" 
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text transition-colors p-1.5 rounded-lg hover:bg-surface-alt"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                >
+                                    onClick={() => setShowPassword(!showPassword)}>
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
@@ -155,10 +127,9 @@ export default function Register() {
                                         type="button"
                                         onClick={() => setForm({ ...form, role: value })}
                                         className={`flex items-center justify-center gap-2.5 py-3.5 rounded-xl text-sm font-black transition-all border-2 ${form.role === value
-                                                ? 'border-accent bg-accent-light text-accent shadow-sm'
+                                                ? 'border-accent bg-accent-light text-accent shadow-sm shadow-accent/20'
                                                 : 'border-border bg-surface text-text-muted hover:border-accent/40 hover:bg-surface-alt'
                                             }`}
-                                        style={form.role === value ? { boxShadow: '0 0 20px -8px rgba(139, 92, 246, 0.3)' } : {}}
                                     >
                                         <Icon size={18} /> {label}
                                     </button>
@@ -167,20 +138,15 @@ export default function Register() {
                         </div>
 
                         <button
-                            className="w-full rounded-xl py-3.5 text-base font-bold shadow-lg transition-all active:scale-[0.98] mt-6 flex items-center justify-center gap-2 text-white relative overflow-hidden group"
-                            style={{ 
-                                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)',
-                            }}
+                            className="btn btn-primary btn-lg w-full mt-6 shadow-accent"
                             type="submit"
                             disabled={loading}
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                             ) : (
-                                <span className="relative z-10 flex items-center gap-2">Create Account <ArrowRight size={18} /></span>
+                                <span className="flex items-center gap-2">Create Account <ArrowRight size={18} /></span>
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                         </button>
                     </form>
 
