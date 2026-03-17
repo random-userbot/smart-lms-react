@@ -201,7 +201,7 @@ function TeacherDashboard() {
                     <div className="stat-label">Total Lectures</div>
                 </div>
                 <div className="stat-card stat-card-accent">
-                    <div className="w-14 h-14 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-6">
                         <TrendingUp size={28} />
                     </div>
                     <div className="stat-value">--</div>
