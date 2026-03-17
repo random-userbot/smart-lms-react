@@ -1,0 +1,34 @@
+{"timestamp": "2026-03-17T10:42:52.520951", "category": "activity", "action": "Server started", "user_id": null, "session_id": null, "data": {"env": "development", "debug": true}}
+{"timestamp": "2026-03-17T10:45:57.149039", "category": "activity", "action": "User logged in: friedrice", "user_id": "2e068d11-1bc9-4ba3-9429-f908b1af2124", "session_id": null, "data": null}
+{"timestamp": "2026-03-17T10:47:01.858898", "category": "activity", "action": "Batch: 18 events from friedrice (session: sess_1773744...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T10:47:06.972627", "category": "activity", "action": "Session end: sess_1773744... duration=82s pages=5", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T10:47:24.862658", "category": "activity", "action": "Server shutting down", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T10:57:21.470970", "category": "activity", "action": "Server started", "user_id": null, "session_id": null, "data": {"env": "development", "debug": true}}
+{"timestamp": "2026-03-17T11:01:13.332847", "category": "activity", "action": "Batch: 11 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:02:42.702178", "category": "activity", "action": "Batch: 4 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:03:13.328518", "category": "activity", "action": "Batch: 4 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:04:13.705471", "category": "activity", "action": "Batch: 6 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:06:12.184583", "category": "activity", "action": "Batch: 2 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:06:56.314893", "category": "activity", "action": "Session end: sess_1773745... duration=414s pages=8", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:08:07.239742", "category": "activity", "action": "Batch: 5 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:09:06.964521", "category": "activity", "action": "Batch: 2 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:10:07.495301", "category": "activity", "action": "Batch: 4 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:12:08.532390", "category": "activity", "action": "Batch: 2 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:13:08.501444", "category": "activity", "action": "Batch: 2 events from friedrice (session: sess_1773745...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:14:02.703032", "category": "activity", "action": "Session end: sess_1773745... duration=418s pages=1", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:15:06.238569", "category": "activity", "action": "Batch: 3 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:16:04.898382", "category": "activity", "action": "Batch: 1 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:17:04.930334", "category": "activity", "action": "Batch: 10 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:18:05.940040", "category": "activity", "action": "Batch: 1 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:19:05.857051", "category": "activity", "action": "Batch: 7 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:20:06.821149", "category": "activity", "action": "Batch: 2 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:25:07.831220", "category": "activity", "action": "Batch: 1 events from friedrice (session: sess_1773746...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:30:08.380338", "category": "activity", "action": "Server shutting down", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:30:24.951976", "category": "activity", "action": "Server started", "user_id": null, "session_id": null, "data": {"env": "development", "debug": true}}
+{"timestamp": "2026-03-17T11:56:16.048416", "category": "activity", "action": "Batch: 5 events from friedrice (session: sess_1773748...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:57:15.952162", "category": "activity", "action": "Batch: 8 events from friedrice (session: sess_1773748...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T11:58:16.368260", "category": "activity", "action": "Batch: 4 events from friedrice (session: sess_1773748...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T12:03:17.930664", "category": "activity", "action": "Batch: 1 events from friedrice (session: sess_1773748...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T12:05:17.841635", "category": "activity", "action": "Batch: 2 events from friedrice (session: sess_1773748...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T12:06:17.643005", "category": "activity", "action": "Batch: 7 events from friedrice (session: sess_1773748...)", "user_id": null, "session_id": null, "data": null}
+{"timestamp": "2026-03-17T12:07:47.731146", "category": "activity", "action": "Server shutting down", "user_id": null, "session_id": null, "data": null}

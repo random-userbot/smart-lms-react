@@ -77,8 +77,10 @@ async def get_video_transcript(video_url: str) -> str:
 
         def _get_transcript():
             try:
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-                return " ".join([t["text"] for t in transcript_list])
+                # youtube-transcript-api v1.x uses object-oriented API
+                ytt_api = YouTubeTranscriptApi()
+                fetched = ytt_api.fetch(video_id)
+                return " ".join([snippet.text for snippet in fetched])
             except Exception:
                 return ""
 

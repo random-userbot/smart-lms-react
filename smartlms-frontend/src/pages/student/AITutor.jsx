@@ -58,24 +58,26 @@ export default function AITutor() {
         // Setup Speech Recognition
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognitionRef.current = new SpeechRecognition();
-            recognitionRef.current.continuous = false;
-            recognitionRef.current.interimResults = false;
+            if (SpeechRecognition) {
+                recognitionRef.current = new SpeechRecognition();
+                recognitionRef.current.continuous = false;
+                recognitionRef.current.interimResults = false;
 
-            recognitionRef.current.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                setInput(transcript);
-                handleSend(transcript);
-            };
+                recognitionRef.current.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    setInput(transcript);
+                    handleSend(transcript);
+                };
 
-            recognitionRef.current.onerror = (event) => {
-                console.error('Speech recognition error', event.error);
-                setIsListening(false);
-            };
+                recognitionRef.current.onerror = (event) => {
+                    console.error('Speech recognition error', event.error);
+                    setIsListening(false);
+                };
 
-            recognitionRef.current.onend = () => {
-                setIsListening(false);
-            };
+                recognitionRef.current.onend = () => {
+                    setIsListening(false);
+                };
+            }
         }
     }, []);
 
@@ -86,10 +88,9 @@ export default function AITutor() {
 
     const speakText = (text) => {
         if (!autoSpeak) return;
-        if (window.speechSynthesis) window.speechSynthesis.cancel(); // Stop any current speech
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
 
-        // Try to pick an appropriate voice based on mode
         if (mode === 'language_practice' && window.speechSynthesis) {
             const voices = window.speechSynthesis.getVoices();
             const langVoice = voices.find(v => v.lang.toLowerCase().includes(targetLanguage.slice(0, 2).toLowerCase()));
@@ -109,7 +110,6 @@ export default function AITutor() {
             setIsListening(false);
         } else {
             if (recognitionRef.current) {
-                // Set language for recognition
                 recognitionRef.current.lang = mode === 'language_practice' ? getLangCode(targetLanguage) : 'en-US';
                 recognitionRef.current.start();
                 setIsListening(true);
@@ -141,13 +141,11 @@ export default function AITutor() {
         trackEvent('tutor_message_sent', { mode, length: textToSubmit.length });
 
         try {
-            // Append a placeholder for the assistant
             setMessages([...newMessages, { role: 'assistant', content: '' }]);
 
             const fullResponse = await tutorAPI.chat(
                 { messages: newMessages, mode, target_language: targetLanguage },
                 (chunk) => {
-                    // Update the last message as chunks arrive
                     setMessages(prev => {
                         const updated = [...prev];
                         updated[updated.length - 1].content = chunk;
@@ -156,7 +154,6 @@ export default function AITutor() {
                 }
             );
 
-            // Speak the final response if enabled
             speakText(fullResponse);
 
         } catch (error) {
@@ -172,39 +169,33 @@ export default function AITutor() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-80px)] max-w-7xl mx-auto p-4 md:p-8">
+        <div className="flex flex-col h-[calc(100vh-64px)] w-full bg-surface-alt font-sans">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 md:p-8 bg-surface rounded-[2rem] shadow-sm border border-border mb-6 transition-all">
-                <div className="flex items-center gap-5">
-                    <div className="flex items-center justify-center w-16 h-16 rounded-[1.5rem] bg-accent text-surface shadow-md">
-                        <Bot size={32} />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:px-8 bg-surface border-b border-border z-10 sticky top-0">
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-accent text-surface shadow-sm hover:scale-105 transition-transform cursor-pointer" onClick={() => setShowModelInfo(!showModelInfo)}>
+                        <Bot size={22} />
                     </div>
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-black text-text leading-tight tracking-tight">Smart AI Tutor</h1>
-                        <button 
-                            onClick={() => setShowModelInfo(!showModelInfo)}
-                            className="text-sm font-bold text-text-secondary flex items-center gap-2 mt-1 hover:text-accent transition-colors"
-                        >
-                            <Sparkles size={16} className="text-warning" />
-                            {MODEL_INFO[mode]?.icon} {MODEL_INFO[mode]?.name} — {MODEL_INFO[mode]?.desc}
-                            {showModelInfo ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
+                        <h1 className="text-xl md:text-2xl font-black text-text tracking-tight flex items-center gap-2">
+                            AI Tutor 
+                            <span className="bg-surface-elevated text-text-muted text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">{MODEL_INFO[mode]?.name}</span>
+                        </h1>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4">
-                    {/* Clear chat */}
+                <div className="flex flex-wrap items-center gap-3">
                     <button
-                        onClick={() => setMessages([{ role: 'assistant', content: "Chat cleared! How can I help you?" }])}
-                        className="btn btn-secondary px-4 !py-3 bg-surface-alt hover:bg-danger-light hover:text-danger hover:border-danger/30 group"
+                        onClick={() => setMessages([{ role: 'assistant', content: "Chat cleared! How can I help you today?" }])}
+                        className="btn btn-ghost !p-2 text-text-muted hover:text-danger hover:bg-danger-light rounded-lg transition-colors"
                         title="Clear conversation"
                     >
-                        <Trash2 size={20} className="group-hover:scale-110 transition-transform"/>
+                        <Trash2 size={20} />
                     </button>
 
                     <div className="relative group">
                         <select
-                            className="input !py-3 pr-10 cursor-pointer text-sm font-black tracking-wider uppercase"
+                            className="input !py-2.5 !pl-4 !pr-10 text-sm font-bold bg-surface-elevated border-transparent focus:border-accent cursor-pointer hover:bg-border transition-colors appearance-none"
                             value={mode}
                             onChange={e => {
                                 setMode(e.target.value);
@@ -215,18 +206,14 @@ export default function AITutor() {
                             <option value="language_practice">🗣️ Language Practice</option>
                             <option value="grammar_check">✍️ Grammar Check</option>
                         </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-text-muted group-hover:text-accent transition-colors">
-                            <svg className="w-5 h-5 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd"></path></svg>
-                        </div>
+                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-text" />
                     </div>
 
                     {(mode === 'language_practice' || mode === 'grammar_check') && (
                         <div className="relative group flex items-center">
-                            <div className="absolute left-4 text-text-muted z-10 group-hover:text-success transition-colors">
-                                <Globe size={20} />
-                            </div>
+                            <Globe size={16} className="absolute left-4 text-text-muted z-10 group-hover:text-accent pointer-events-none" />
                             <select
-                                className="input !py-3 pl-12 pr-10 cursor-pointer text-sm font-black tracking-wider uppercase border-border focus:border-success focus:ring-success/50 hover:border-success/50"
+                                className="input !py-2.5 !pl-10 !pr-10 text-sm font-bold bg-surface-elevated border-transparent focus:border-accent cursor-pointer hover:bg-border transition-colors appearance-none"
                                 value={targetLanguage}
                                 onChange={e => setTargetLanguage(e.target.value)}
                             >
@@ -235,98 +222,96 @@ export default function AITutor() {
                                 <option value="German">German</option>
                                 <option value="Japanese">Japanese</option>
                             </select>
-                            <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-text-muted group-hover:text-success transition-colors">
-                                <svg className="w-5 h-5 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd"></path></svg>
-                            </div>
+                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-text" />
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Model Info Panel */}
+            {/* Model Info Dropdown */}
             {showModelInfo && (
-                <div className="bg-surface rounded-[2rem] shadow-sm border border-border mb-6 p-8 animate-in fade-in slide-in-from-top-4 duration-200">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-surface border-b border-border p-6 md:px-8 absolute top-[72px] inset-x-0 z-20 shadow-lg animate-in slide-in-from-top-2">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                         {Object.entries(MODEL_INFO).map(([key, info]) => (
-                            <div key={key} className={`p-6 rounded-[1.5rem] border-2 transition-all ${mode === key ? 'border-accent bg-accent-light shadow-sm' : 'border-border bg-surface-alt opacity-70 hover:opacity-100'}`}>
+                            <div key={key} onClick={() => { setMode(key); setShowModelInfo(false); }} className={`p-5 rounded-2xl border-2 transition-all cursor-pointer ${mode === key ? 'border-accent bg-accent-light shadow-sm' : 'border-transparent bg-surface-alt hover:border-border hover:bg-surface-elevated'}`}>
                                 <div className="flex items-center gap-3 mb-2">
                                     <span className="text-2xl">{info.icon}</span>
-                                    <span className="font-black text-text text-base tracking-tight">{info.name}</span>
-                                    {mode === key && <span className="ml-auto text-[10px] font-black tracking-widest bg-accent text-surface shadow-sm px-2.5 py-1 rounded-md uppercase">Active</span>}
+                                    <span className="font-bold text-text">{info.name}</span>
                                 </div>
                                 <p className="text-sm font-medium text-text-secondary">{info.desc}</p>
-                                <p className="text-xs font-black text-text-muted uppercase tracking-widest mt-2">
-                                    {key === 'general' ? 'General Tutoring' : key === 'language_practice' ? 'Language Practice' : 'Grammar Check'}
-                                </p>
                             </div>
                         ))}
                     </div>
-                    <div className="mt-6 flex items-start sm:items-center gap-3 text-sm font-bold text-text-secondary px-2 p-4 bg-surface-alt border border-border rounded-xl">
-                        <Brain size={20} className="text-accent shrink-0" />
-                        <span>The AI Tutor uses your <strong className="text-text">engagement analytics, ICAP state, and quiz history</strong> to personalize responses. All models run via Groq API with streaming.</span>
+                </div>
+            )}
+
+            {/* Chat Area - GPT Style (Full Width, Centered Content) */}
+            <div className="flex-1 overflow-y-auto scroll-smooth">
+                {messages.length === 1 && !isTyping && (
+                    <div className="max-w-3xl mx-auto mt-16 px-6 text-center animate-in fade-in slide-in-from-bottom-4">
+                        <div className="w-20 h-20 bg-surface rounded-3xl mx-auto flex items-center justify-center shadow-md border border-border mb-8 text-accent">
+                            {MODEL_INFO[mode]?.icon}
+                        </div>
+                        <h2 className="text-3xl font-black text-text mb-8">How can I help you today?</h2>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                            {(SUGGESTED_PROMPTS[mode] || SUGGESTED_PROMPTS.general).map((prompt, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => { setInput(prompt); handleSend(prompt); }}
+                                    className="p-4 bg-surface border border-border rounded-2xl hover:bg-surface-elevated hover:border-accent/40 hover:shadow-sm transition-all group flex flex-col items-start gap-1"
+                                >
+                                    <span className="text-sm font-bold text-text group-hover:text-accent transition-colors">{prompt}</span>
+                                    <span className="text-xs font-medium text-text-muted">Click to ask</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* Suggested Prompts — show when conversation is short */}
-            {messages.length <= 2 && !isTyping && (
-                <div className="mb-6 flex flex-wrap gap-3">
-                    {(SUGGESTED_PROMPTS[mode] || SUGGESTED_PROMPTS.general).map((prompt, i) => (
-                        <button
-                            key={i}
-                            onClick={() => { setInput(prompt); handleSend(prompt); }}
-                            className="bg-surface border border-border rounded-xl px-5 py-3 text-sm font-bold text-text-secondary hover:bg-surface-alt hover:border-accent/40 hover:text-accent transition-all shadow-sm flex items-center gap-2 group"
-                        >
-                            <Zap size={16} className="text-warning group-hover:scale-110 transition-transform" />{prompt}
-                        </button>
-                    ))}
-                </div>
-            )}
-
-            {/* Chat Area */}
-            <div className="flex-1 bg-surface rounded-t-[2.5rem] border border-border shadow-sm overflow-hidden flex flex-col mb-0">
-                <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 scroll-smooth">
+                <div className="pb-32 pt-6">
                     {messages.map((msg, i) => (
-                        <div key={i} className={`flex gap-4 md:gap-6 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                            {/* Avatar */}
-                            <div className={`flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-2xl flex-shrink-0 shadow-md border
-                                ${msg.role === 'user'
-                                    ? 'bg-text text-surface border-border'
-                                    : 'bg-accent-light text-accent border-accent/20'}`}>
-                                {msg.role === 'user' ? <User size={24} /> : <Bot size={28} />}
-                            </div>
+                        <div key={i} className={`w-full py-6 md:py-8 ${msg.role === 'assistant' ? 'bg-surface-alt border-y border-border/50' : 'bg-transparent'}`}>
+                            <div className="max-w-3xl mx-auto px-4 md:px-6 flex gap-4 md:gap-6">
+                                {/* Avatar */}
+                                <div className={`flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg flex-shrink-0
+                                    ${msg.role === 'user'
+                                        ? 'bg-text text-surface'
+                                        : 'bg-accent text-surface shadow-sm'}`}>
+                                    {msg.role === 'user' ? <User size={20} /> : <Bot size={24} />}
+                                </div>
 
-                            {/* Message Bubble */}
-                            <div className={`relative max-w-[85%] md:max-w-[75%] px-6 py-5 rounded-[1.5rem] shadow-sm text-base md:text-lg leading-relaxed
-                                ${msg.role === 'user'
-                                    ? 'bg-text text-surface rounded-tr-sm'
-                                    : 'bg-surface-alt text-text border border-border rounded-tl-sm'}`}>
-                                {msg.role === 'assistant' ? (
-                                    <ReactMarkdown
-                                        className={`prose prose-sm md:prose-base dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-elevated prose-pre:text-text prose-pre:border prose-pre:border-border prose-pre:rounded-[1.5rem] prose-pre:shadow-inner prose-code:text-accent prose-code:bg-accent-light prose-code:px-2 prose-code:py-1 prose-code:rounded-lg prose-code:before:content-none prose-code:after:content-none`}
-                                    >
-                                        {msg.content || '...'}
-                                    </ReactMarkdown>
-                                ) : (
-                                    <div className="whitespace-pre-wrap font-medium">{msg.content}</div>
-                                )}
+                                {/* Message Content */}
+                                <div className="flex-1 overflow-hidden min-w-0">
+                                    <div className="font-bold text-text text-sm mb-1">{msg.role === 'user' ? 'You' : 'AI Tutor'}</div>
+                                    <div className={`text-text text-base leading-relaxed ${msg.role === 'user' ? 'whitespace-pre-wrap font-medium' : ''}`}>
+                                        {msg.role === 'assistant' ? (
+                                            <ReactMarkdown
+                                                className="prose prose-sm md:prose-base dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-elevated prose-pre:border prose-pre:border-border prose-pre:rounded-xl prose-pre:shadow-inner prose-code:bg-surface-elevated prose-code:text-accent prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none"
+                                            >
+                                                {msg.content || '...'}
+                                            </ReactMarkdown>
+                                        ) : (
+                                            msg.content
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ))}
 
-                    {/* Typing Indicator */}
+                    {/* Typing Status */}
                     {isTyping && messages[messages.length - 1]?.role !== 'assistant' && (
-                        <div className="flex gap-4 md:gap-6">
-                            <div className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-accent/20 bg-accent-light text-accent shadow-sm">
-                                <Bot size={28} />
-                            </div>
-                            <div className="bg-surface-alt border border-border px-6 py-5 rounded-[1.5rem] rounded-tl-sm shadow-sm flex items-center gap-3">
-                                <div className="flex space-x-2">
-                                    <div className="w-3 h-3 bg-accent/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                    <div className="w-3 h-3 bg-accent/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                    <div className="w-3 h-3 bg-accent/60 rounded-full animate-bounce"></div>
+                        <div className="w-full py-6 md:py-8 bg-surface-alt border-y border-border/50">
+                            <div className="max-w-3xl mx-auto px-4 md:px-6 flex gap-4 md:gap-6">
+                                <div className="flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg bg-accent text-surface shadow-sm shrink-0">
+                                    <Bot size={24} />
                                 </div>
-                                <span className="text-sm font-bold text-accent ml-2 uppercase tracking-widest">Thinking</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-text-muted rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                    <div className="w-2 h-2 bg-text-muted rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                    <div className="w-2 h-2 bg-text-muted rounded-full animate-bounce"></div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -334,34 +319,31 @@ export default function AITutor() {
                 </div>
             </div>
 
-            {/* Input Area */}
-            <div className="bg-surface rounded-b-[2.5rem] border border-border border-t-0 shadow-sm p-6 relative z-10 transition-all focus-within:ring-2 focus-within:ring-accent/20">
-                <div className="flex items-end gap-3 md:gap-4 relative max-w-6xl mx-auto">
-
-                    {/* Audio Controls */}
-                    <div className="flex gap-3 mb-1.5 shrink-0">
+            {/* Input Area (Sticky at bottom, centered) */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-surface-alt via-surface-alt to-transparent pt-10 pb-6 px-4">
+                <div className="max-w-3xl mx-auto relative">
+                    {/* Audio Controls (Floating slightly above input) */}
+                    <div className="absolute -top-12 right-2 flex gap-2">
                         <button
-                            className={`p-4 rounded-2xl flex items-center justify-center transition-all shadow-sm border ${autoSpeak ? 'bg-warning-light text-warning border-warning/20' : 'bg-surface-elevated text-text-secondary border-border hover:bg-surface-alt hover:text-text'}`}
-                            onClick={toggleAutoSpeak}
-                            title={autoSpeak ? "Disable TTS" : "Enable Auto-TTS"}
-                        >
-                            {isSpeaking ? <Volume2 size={24} className="animate-pulse" /> : autoSpeak ? <Volume2 size={24} /> : <VolumeX size={24} />}
-                        </button>
-
-                        <button
-                            className={`p-4 rounded-2xl flex items-center justify-center transition-all shadow-sm border ${isListening ? 'bg-danger text-surface border-danger shadow-danger/30 animate-pulse' : 'bg-surface-elevated text-text-secondary border-border hover:bg-surface-alt hover:text-text'}`}
+                            className={`p-2.5 rounded-full flex items-center justify-center transition-all shadow-md border ${isListening ? 'bg-danger text-surface border-danger' : 'bg-surface text-text-secondary border-border hover:bg-surface-elevated'}`}
                             onClick={toggleListening}
                             title={isListening ? "Stop Listening" : "Start Speaking"}
                         >
-                            {isListening ? <MicOff size={24} /> : <Mic size={24} />}
+                            {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                        </button>
+                        <button
+                            className={`p-2.5 rounded-full flex items-center justify-center transition-all shadow-md border bg-surface text-text-secondary border-border hover:bg-surface-elevated ${autoSpeak ? 'bg-warning-light border-warning/30 text-warning' : ''}`}
+                            onClick={toggleAutoSpeak}
+                            title={autoSpeak ? "Disable TTS" : "Enable Auto-TTS"}
+                        >
+                            {isSpeaking ? <Volume2 size={18} className="animate-pulse text-warning" /> : autoSpeak ? <Volume2 size={18} /> : <VolumeX size={18} />}
                         </button>
                     </div>
 
-                    {/* Text Input */}
-                    <div className="flex-1 relative">
+                    <div className="relative bg-surface rounded-3xl border border-border shadow-md focus-within:ring-2 focus-within:ring-accent/20 focus-within:border-accent transition-all overflow-hidden flex items-end">
                         <textarea
-                            className="input w-full px-6 py-4 resize-none max-h-[160px] min-h-[60px] text-base"
-                            placeholder={isListening ? "Listening natively..." : "Message your AI Tutor..."}
+                            className="w-full bg-transparent text-text placeholder-text-muted px-6 py-4 resize-none max-h-[200px] min-h-[60px] text-base focus:outline-none leading-relaxed"
+                            placeholder="Message AI Tutor..."
                             value={input}
                             onChange={e => setInput(e.target.value)}
                             onKeyDown={e => {
@@ -374,21 +356,19 @@ export default function AITutor() {
                             rows={1}
                             style={{ overflowY: 'auto' }}
                         />
+                        <button
+                            className={`mb-2 mr-2 p-3 rounded-2xl flex items-center justify-center transition-all disabled:opacity-50 shrink-0 ${input.trim() ? 'bg-accent text-white shadow-sm hover:bg-accent-hover' : 'bg-surface-elevated text-text-muted'}`}
+                            onClick={() => handleSend()}
+                            disabled={!input.trim() || isTyping}
+                        >
+                            {isTyping ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                        </button>
                     </div>
-
-                    {/* Send Button */}
-                    <button
-                        className="mb-1.5 p-4 bg-text hover:bg-text-secondary text-surface rounded-2xl shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shrink-0 border border-text group"
-                        onClick={() => handleSend()}
-                        disabled={!input.trim() || isTyping}
-                    >
-                        {isTyping ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />}
-                    </button>
-
-                </div>
-                <div className="mt-4 flex flex-col sm:flex-row items-center justify-between max-w-6xl mx-auto gap-2">
-                    <p className="text-xs font-bold text-text-muted text-center sm:text-left">AI Tutor can make mistakes. Always verify facts and exercise critical thinking.</p>
-                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest shrink-0">{messages.length} interactions</span>
+                    <div className="text-center mt-3">
+                        <p className="text-[11px] font-medium text-text-muted tracking-wide">
+                            AI Tutor can make mistakes. Consider verifying important information.
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

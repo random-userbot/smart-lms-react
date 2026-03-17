@@ -325,21 +325,38 @@ export default function EditCourse() {
 }
 
 function MaterialsTab({ courseId, lectures }) {
-    const [selectedLecture, setSelectedLecture] = useState('');
+    const [selectedLecture, setSelectedLecture] = useState(lectures[0]?.id || '');
+    const [materials, setMaterials] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [loadingMaterials, setLoadingMaterials] = useState(false);
+
+    const fetchMaterials = async (lectureId) => {
+        if (!lectureId) return;
+        setLoadingMaterials(true);
+        try {
+            const res = await lecturesAPI.getMaterials(lectureId);
+            setMaterials(res.data || []);
+        } catch {
+            setMaterials([]);
+        } finally {
+            setLoadingMaterials(false);
+        }
+    };
+
+    useEffect(() => {
+        if (selectedLecture) fetchMaterials(selectedLecture);
+    }, [selectedLecture]);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file || !selectedLecture) return;
-
         setUploading(true);
         const formData = new FormData();
         formData.append('file', file);
         formData.append('lecture_id', selectedLecture);
-
         try {
             await lecturesAPI.addMaterial(formData);
-            alert('File uploaded successfully!');
+            await fetchMaterials(selectedLecture);
         } catch (error) {
             alert(error.response?.data?.detail || 'Upload failed');
         } finally {
@@ -348,36 +365,122 @@ function MaterialsTab({ courseId, lectures }) {
         }
     };
 
+    const handleDelete = async (id) => {
+        if (!confirm('Delete this material?')) return;
+        try {
+            await lecturesAPI.deleteMaterial(id);
+            setMaterials(prev => prev.filter(m => m.id !== id));
+        } catch {
+            alert('Failed to delete material');
+        }
+    };
+
+    const getFileIcon = (type = '') => {
+        if (type.includes('pdf')) return { icon: '📄', color: 'text-danger bg-danger-light border-danger/20' };
+        if (type.includes('zip') || type.includes('rar')) return { icon: '🗜️', color: 'text-warning bg-warning-light border-warning/20' };
+        if (type.includes('image')) return { icon: '🖼️', color: 'text-info bg-info-light border-info/20' };
+        return { icon: '📁', color: 'text-accent bg-accent-light border-accent/20' };
+    };
+
     return (
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center border-2 border-dashed border-border rounded-[2.5rem] bg-surface-alt max-w-4xl mx-auto">
-            <div className="p-8 bg-surface rounded-[2rem] shadow-sm text-text-muted mb-8 border border-border">
-                <Upload size={64} strokeWidth={1.5} />
+        <div className="space-y-8">
+            <div className="flex flex-col md:flex-row gap-6 items-start md:items-end">
+                <div className="flex-1">
+                    <label className="block text-sm font-black text-text-secondary uppercase tracking-widest mb-3">Select Lecture</label>
+                    <select
+                        className="input py-4 text-base bg-surface-elevated shadow-sm"
+                        value={selectedLecture}
+                        onChange={e => setSelectedLecture(e.target.value)}
+                    >
+                        <option value="">-- Choose a lecture --</option>
+                        {lectures.map(l => (
+                            <option key={l.id} value={l.id}>{l.title}</option>
+                        ))}
+                    </select>
+                </div>
+                <label className={`btn btn-lg shrink-0 ${!selectedLecture || uploading ? 'bg-surface-elevated text-text-muted border-border pointer-events-none' : 'btn-primary shadow-accent cursor-pointer px-10'}`}>
+                    {uploading ? <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" /> Uploading...</> : <><Upload size={20} className="mr-2" /> Upload File</>}
+                    <input type="file" className="hidden" onChange={handleFileChange} disabled={!selectedLecture || uploading} />
+                </label>
             </div>
-            <h3 className="text-3xl font-black text-text mb-4 tracking-tight">Upload Course Materials</h3>
-            <p className="text-text-secondary font-medium max-w-lg mx-auto mb-10 text-lg">Attach PDFs, ZIP files, or documents to a specific lecture in this course. They will be immediately available for students to download.</p>
 
-            <div className="w-full max-w-md mb-8 text-left">
-                <label className="block text-sm font-black text-text-secondary uppercase tracking-widest mb-3">Select Lecture</label>
-                <select
-                    className="input py-4 text-base bg-surface-elevated shadow-sm"
-                    value={selectedLecture}
-                    onChange={e => setSelectedLecture(e.target.value)}
-                >
-                    <option value="">-- Choose a lecture --</option>
-                    {lectures.map(l => (
-                        <option key={l.id} value={l.id}>{l.title}</option>
-                    ))}
-                </select>
-            </div>
+            {/* Materials List */}
+            {selectedLecture && (
+                <div className="bg-surface-alt rounded-[2rem] border border-border overflow-hidden">
+                    <div className="px-8 py-6 bg-surface border-b border-border flex items-center justify-between">
+                        <h4 className="font-black text-text text-xl">Uploaded Materials</h4>
+                        <span className="text-xs font-black text-text-muted uppercase tracking-widest bg-surface-elevated border border-border px-4 py-2 rounded-xl">{materials.length} file{materials.length !== 1 ? 's' : ''}</span>
+                    </div>
 
-            <label className={`btn btn-lg ${!selectedLecture || uploading ? 'bg-surface-elevated text-text-muted border-border pointer-events-none' : 'btn-primary shadow-accent cursor-pointer px-12'}`}>
-                {uploading ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-3"></div> : <Upload size={22} className="mr-3" />}
-                {uploading ? 'Uploading...' : 'Select File & Upload'}
-                <input type="file" className="hidden" onChange={handleFileChange} />
-            </label>
+                    {loadingMaterials ? (
+                        <div className="flex justify-center py-16">
+                            <div className="w-10 h-10 border-4 border-accent-light border-t-accent rounded-full animate-spin" />
+                        </div>
+                    ) : materials.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+                            <div className="p-6 bg-surface rounded-2xl mb-5 text-text-muted border border-border">
+                                <Upload size={40} strokeWidth={1.5} />
+                            </div>
+                            <p className="text-lg font-black text-text mb-2">No materials uploaded yet</p>
+                            <p className="text-text-secondary font-medium">Upload PDFs, ZIPs, or documents above to make them available to students.</p>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-border">
+                            {materials.map(mat => {
+                                const { icon, color } = getFileIcon(mat.file_type);
+                                const isPdf = mat.file_type?.includes('pdf');
+                                return (
+                                    <div key={mat.id} className="flex items-center gap-5 px-8 py-6 hover:bg-surface transition-colors group">
+                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl border flex-shrink-0 ${color}`}>
+                                            {icon}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-black text-text text-lg truncate">{mat.title}</div>
+                                            <div className="text-xs font-bold text-text-muted uppercase tracking-widest mt-1">
+                                                {mat.file_type} · {(mat.file_size / 1024).toFixed(0)} KB
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {isPdf && (
+                                                <a
+                                                    href={mat.file_url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="btn btn-sm bg-info-light text-info border-info/20 hover:bg-info hover:text-white"
+                                                    title="View PDF"
+                                                >
+                                                    👁 View
+                                                </a>
+                                            )}
+                                            <a
+                                                href={mat.file_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                download
+                                                className="btn btn-sm bg-accent-light text-accent border-accent/20 hover:bg-accent hover:text-white"
+                                                title="Download"
+                                            >
+                                                ↓ Download
+                                            </a>
+                                            <button
+                                                className="btn btn-sm bg-danger-light text-danger border-danger/20 hover:bg-danger hover:text-white"
+                                                onClick={() => handleDelete(mat.id)}
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
+
 
 function StudentsTab({ courseId }) {
     const [students, setStudents] = useState([]);

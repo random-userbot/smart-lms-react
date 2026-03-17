@@ -153,6 +153,13 @@ export default function LecturePage() {
         if (playing && !webcamOn) startWebcam();
     }, [playing]);
 
+    // Fix for the webcam not rendering: Wait until it mounts and assign the stream
+    useEffect(() => {
+        if (webcamOn && webcamRef.current && streamRef.current) {
+            webcamRef.current.srcObject = streamRef.current;
+        }
+    }, [webcamOn]);
+
     useEffect(() => {
         if (!webcamOn) return;
         intervalRef.current = setInterval(async () => {
@@ -231,28 +238,28 @@ export default function LecturePage() {
     const videoUrl = lecture.youtube_url || lecture.video_url;
 
     return (
-        <div className="min-h-[calc(100vh-80px)] bg-surface-alt pb-16">
+        <div className="min-h-[calc(100vh-80px)] bg-surface-alt pb-24">
             {phase === 'lecture' && (
-                <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-10">
-                    <div className="flex gap-4 mb-4">
+                <div className="max-w-7xl mx-auto px-6 md:px-12 pt-12">
+                    <div className="flex gap-8 mb-6 border-b border-border">
                         <button
-                            className={`flex items-center gap-2 px-8 py-3.5 rounded-t-2xl font-black transition-all border-b-2 tracking-wide ${activeTab === 'video' ? 'bg-surface text-accent border-accent shadow-[0_-4px_10px_-5px_var(--color-accent-light)]' : 'bg-surface-elevated text-text-muted border-transparent hover:bg-border'}`}
+                            className={`flex items-center gap-3 pb-4 font-bold transition-all border-b-2 tracking-wide text-lg ${activeTab === 'video' ? 'text-accent border-accent' : 'text-text-muted border-transparent hover:text-text hover:border-border border-b-transparent'}`}
                             onClick={() => setActiveTab('video')}
                         >
-                            <Play size={20} /> Video Lecture
+                            <Play size={22} /> Video Lecture
                         </button>
                         <button
-                            className={`flex items-center gap-2 px-8 py-3.5 rounded-t-2xl font-black transition-all border-b-2 tracking-wide ${activeTab === 'materials' ? 'bg-surface text-accent border-accent shadow-[0_-4px_10px_-5px_var(--color-accent-light)]' : 'bg-surface-elevated text-text-muted border-transparent hover:bg-border'}`}
+                            className={`flex items-center gap-3 pb-4 font-bold transition-all border-b-2 tracking-wide text-lg ${activeTab === 'materials' ? 'text-accent border-accent' : 'text-text-muted border-transparent hover:text-text hover:border-border border-b-transparent'}`}
                             onClick={() => setActiveTab('materials')}
                         >
-                            <FileText size={20} /> Reading Materials <span className="ml-2 bg-surface-alt text-text-muted px-2.5 py-0.5 rounded-lg text-xs font-black border border-border">{materials.length}</span>
+                            <FileText size={22} /> Reading Materials <span className={`ml-2 px-3 py-1 rounded-full text-xs font-bold ${activeTab === 'materials' ? 'bg-accent/10 text-accent' : 'bg-surface-elevated text-text-muted'}`}>{materials.length}</span>
                         </button>
                     </div>
 
-                    <div className="bg-surface rounded-b-[2.5rem] rounded-tr-[2.5rem] shadow-md border border-border overflow-hidden">
+                    <div className="bg-surface rounded-3xl shadow-lg border border-border overflow-hidden ring-1 ring-border/50">
                         {activeTab === 'video' ? (
                             <>
-                                <div className="bg-black w-full relative flex justify-center items-center h-[50vh] md:h-[70vh] overflow-hidden group">
+                                <div className="bg-black w-full relative flex justify-center items-center aspect-video max-h-[75vh] min-h-[50vh] overflow-hidden group">
                                     {videoUrl ? (
                                         <>
                                             <ReactPlayer
@@ -263,10 +270,23 @@ export default function LecturePage() {
                                                 width="100%"
                                                 height="100%"
                                                 playbackRate={playbackSpeed}
+                                                progressInterval={5000}
                                                 onPlay={() => setPlaying(true)}
                                                 onPause={() => setPlaying(false)}
                                                 onEnded={handleVideoEnd}
                                                 style={{ position: 'absolute', top: 0, left: 0 }}
+                                                config={{
+                                                    youtube: {
+                                                        playerVars: {
+                                                            rel: 0,
+                                                            modestbranding: 1,
+                                                            enablejsapi: 1,
+                                                            origin: window.location.origin,
+                                                            iv_load_policy: 3,
+                                                            cc_load_policy: 0,
+                                                        }
+                                                    }
+                                                }}
                                             />
                                             {!playing && (
                                                 <button
@@ -379,8 +399,8 @@ export default function LecturePage() {
                                     )}
                                 </div>
 
-                                <div className="bg-surface border-b border-border px-8 md:px-12 py-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-                                    <h2 className="text-2xl md:text-3xl font-black text-text truncate max-w-2xl tracking-tight" title={lecture.title}>{lecture.title}</h2>
+                                <div className="bg-surface border-b border-border px-10 md:px-14 py-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+                                    <h2 className="text-3xl md:text-4xl font-black text-text truncate max-w-3xl tracking-tight" title={lecture.title}>{lecture.title}</h2>
 
                                     <div className="flex flex-wrap items-center gap-5">
                                         <div className="flex items-center gap-3 text-sm hidden md:flex">
@@ -424,8 +444,8 @@ export default function LecturePage() {
                                     </div>
                                 )}
 
-                                <div className="p-8 md:p-12 bg-surface-alt border-t border-border">
-                                    <label className="flex items-center gap-2 font-black mb-4 text-text text-xl tracking-tight"><FileText size={24} className="text-accent" /> Personal Notes <span className="ml-3 font-bold text-xs bg-accent-light text-accent border border-accent/20 px-3 py-1.5 rounded-lg uppercase tracking-widest hidden md:inline-block">Boosts Interaction Score</span></label>
+                                <div className="p-10 md:p-14 bg-surface-alt border-t border-border">
+                                    <label className="flex items-center gap-3 font-black mb-6 text-text text-2xl tracking-tight"><FileText size={28} className="text-accent" /> Personal Notes <span className="ml-4 font-bold text-xs bg-accent/10 text-accent border border-accent/20 px-3.5 py-1.5 rounded-xl uppercase tracking-widest hidden md:inline-block">Boosts Interaction Score</span></label>
                                     <textarea
                                         className="w-full p-6 border border-border rounded-2xl focus:ring-4 focus:ring-accent/20 focus:border-accent bg-surface shadow-inner resize-y text-text font-medium placeholder-text-muted transition-all text-lg leading-relaxed"
                                         placeholder="Taking active notes here will be detected by the AI Tutor to boost your ICAP interaction state to constructive..."
@@ -548,9 +568,9 @@ function EngagementIntelligencePanel({ engagementScore, lectureId }) {
     const modelType = engagementScore.model_type || 'rule_based';
 
     return (
-        <div className="px-8 md:px-12 py-6 bg-gradient-to-r from-surface via-surface-alt to-surface">
-            <div className="flex items-center justify-between gap-6">
-                <div className="flex items-center gap-6 flex-wrap">
+        <div className="px-10 md:px-14 py-8 bg-gradient-to-r from-surface via-surface-alt to-surface border-t border-border/50">
+            <div className="flex items-center justify-between gap-8">
+                <div className="flex items-center gap-8 flex-wrap">
                     <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-sm border ${
                             score >= 70 ? 'bg-success-light text-success border-success/30' :
@@ -647,6 +667,9 @@ function EngagementIntelligencePanel({ engagementScore, lectureId }) {
 
 // ─── Materials Tab ───────────────────────────────────────
 function MaterialsTab({ materials, trackEvent }) {
+    const [viewerUrl, setViewerUrl] = useState(null);
+    const [viewerTitle, setViewerTitle] = useState('');
+
     if (materials.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-24 text-center">
@@ -661,37 +684,97 @@ function MaterialsTab({ materials, trackEvent }) {
 
     const handleDownload = (mat) => {
         trackEvent('material_download', { file_id: mat.id, file_name: mat.title, file_type: mat.file_type });
-        window.open(mat.file_url, '_blank');
+        const a = document.createElement('a');
+        a.href = mat.file_url;
+        a.download = mat.title;
+        a.target = '_blank';
+        a.click();
     };
 
-    const getIcon = (type) => {
-        if (type.includes('pdf')) return <div className="p-4 bg-danger-light text-danger rounded-2xl"><FileText size={28} /></div>;
-        if (type.includes('zip') || type.includes('rar')) return <div className="p-4 bg-warning-light text-warning rounded-2xl"><FileArchive size={28} /></div>;
-        return <div className="p-4 bg-info-light text-info rounded-2xl"><FileIcon size={28} /></div>;
+    const handleView = (mat) => {
+        trackEvent('material_viewed', { file_id: mat.id, file_name: mat.title, file_type: mat.file_type });
+        setViewerTitle(mat.title);
+        setViewerUrl(mat.file_url);
     };
+
+    const getIcon = (type = '') => {
+        if (type.includes('pdf')) return <div className="p-4 bg-danger-light text-danger rounded-2xl flex-shrink-0"><FileText size={28} /></div>;
+        if (type.includes('zip') || type.includes('rar')) return <div className="p-4 bg-warning-light text-warning rounded-2xl flex-shrink-0"><FileArchive size={28} /></div>;
+        return <div className="p-4 bg-info-light text-info rounded-2xl flex-shrink-0"><FileIcon size={28} /></div>;
+    };
+
+    const isPdf = (type = '') => type.includes('pdf');
 
     return (
-        <div className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 bg-surface-alt">
-            {materials.map(mat => (
-                <div key={mat.id} className="bg-surface rounded-3xl p-6 shadow-sm border border-border flex items-center gap-5 hover:shadow-md hover:border-accent-light transition-all group">
-                    <div>
-                        {getIcon(mat.file_type)}
+        <>
+            <div className="p-10 md:p-14 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 bg-surface-alt">
+                {materials.map(mat => (
+                    <div key={mat.id} className="bg-surface rounded-3xl p-6 shadow-sm border border-border hover:shadow-md hover:border-accent/30 transition-all group flex flex-col gap-4">
+                        <div className="flex items-center gap-4">
+                            {getIcon(mat.file_type)}
+                            <div className="flex-1 overflow-hidden">
+                                <h4 className="font-bold text-text text-lg mb-1 truncate leading-tight" title={mat.title}>{mat.title}</h4>
+                                <span className="text-xs font-black text-text-muted uppercase tracking-widest">
+                                    {mat.file_type} • {(mat.file_size / 1024).toFixed(0)} KB
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex gap-3 pt-2 border-t border-border">
+                            {isPdf(mat.file_type) && (
+                                <button
+                                    className="flex-1 btn btn-sm bg-accent-light text-accent border-accent/20 hover:bg-accent hover:text-white justify-center"
+                                    onClick={() => handleView(mat)}
+                                >
+                                    👁 View Full
+                                </button>
+                            )}
+                            <button
+                                className="flex-1 btn btn-sm bg-surface-elevated text-text-secondary border-border hover:bg-surface hover:text-accent justify-center"
+                                onClick={() => handleDownload(mat)}
+                                title="Download">
+                                <Download size={16} className="mr-1.5" /> Download
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex-1 overflow-hidden">
-                        <h4 className="font-bold text-text text-lg mb-1 truncate" title={mat.title}>{mat.title}</h4>
-                        <span className="text-xs font-black text-text-muted uppercase tracking-widest">
-                            {mat.file_type} • {(mat.file_size / 1024).toFixed(0)} KB
-                        </span>
+                ))}
+            </div>
+
+            {/* PDF Full-View Modal */}
+            {viewerUrl && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-in fade-in">
+                    <div className="w-full max-w-5xl h-[90vh] bg-surface rounded-[2rem] overflow-hidden border border-border shadow-2xl flex flex-col">
+                        <div className="flex items-center justify-between px-8 py-5 border-b border-border bg-surface-alt flex-shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className="p-2.5 bg-danger-light text-danger rounded-xl border border-danger/20">
+                                    <FileText size={22} />
+                                </div>
+                                <span className="font-black text-text text-lg truncate max-w-[500px]">{viewerTitle}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <a
+                                    href={viewerUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    download
+                                    className="btn btn-sm bg-surface text-text-secondary border-border hover:bg-accent hover:text-white hover:border-accent"
+                                >
+                                    <Download size={16} className="mr-1.5" /> Download
+                                </a>
+                                <button
+                                    onClick={() => setViewerUrl(null)}
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl bg-surface text-text-muted hover:text-text hover:bg-surface-elevated border border-border transition-all font-black text-xl"
+                                >×</button>
+                            </div>
+                        </div>
+                        <iframe
+                            src={viewerUrl}
+                            className="flex-1 w-full bg-white"
+                            title={viewerTitle}
+                        />
                     </div>
-                    <button
-                        className="w-12 h-12 rounded-full bg-surface-elevated hover:bg-accent-light text-text-muted hover:text-accent flex items-center justify-center transition-colors border border-border focus:opacity-100 opacity-0 group-hover:opacity-100"
-                        onClick={() => handleDownload(mat)}
-                        title="Download">
-                        <Download size={20} />
-                    </button>
                 </div>
-            ))}
-        </div>
+            )}
+        </>
     );
 }
 
@@ -892,31 +975,92 @@ function FeedbackPhase({ lectureId, courseId, onComplete }) {
         difficulty_level: 0, text: '', suggestions: '',
     });
     const [submitted, setSubmitted] = useState(false);
+    const [nlpResult, setNlpResult] = useState(null);
 
     const handleSubmit = async () => {
         if (form.overall_rating === 0) return;
         try {
-            await feedbackAPI.submit({
+            const res = await feedbackAPI.submit({
                 lecture_id: lectureId,
                 course_id: courseId,
                 ...form,
             });
             try { await gamificationAPI.awardPoints('feedback', 10); } catch { }
+            setNlpResult(res.data);
             setSubmitted(true);
-            setTimeout(onComplete, 1500);
         } catch (err) {
             console.error('Feedback error:', err);
         }
     };
 
+    const sentimentColors = {
+        positive: { bg: 'bg-success-light border-success/20', text: 'text-success', icon: '😊', label: 'Positive' },
+        negative: { bg: 'bg-danger-light border-danger/20', text: 'text-danger', icon: '😟', label: 'Negative' },
+        neutral: { bg: 'bg-surface-elevated border-border', text: 'text-text-secondary', icon: '😐', label: 'Neutral' },
+    };
+
     if (submitted) {
+        const sentiment = nlpResult?.sentiment;
+        const keywords = nlpResult?.keywords || [];
+        const sc = sentimentColors[sentiment?.label || 'neutral'];
+
         return (
-            <div className="max-w-2xl mx-auto px-6 py-24 text-center animate-in fade-in slide-in-from-bottom-4">
-                <div className="inline-flex items-center justify-center p-8 bg-success-light text-success rounded-full mb-8 border border-success/20 shadow-sm">
-                    <ThumbsUp size={80} strokeWidth={2.5}/>
+            <div className="max-w-2xl mx-auto px-6 py-16 animate-in fade-in slide-in-from-bottom-4 space-y-8">
+                <div className="text-center">
+                    <div className="inline-flex items-center justify-center p-8 bg-success-light text-success rounded-full mb-6 border border-success/20 shadow-sm">
+                        <ThumbsUp size={64} strokeWidth={2.5}/>
+                    </div>
+                    <h2 className="text-3xl lg:text-4xl font-black text-text tracking-tight mb-3">Feedback Submitted!</h2>
+                    <p className="text-text-secondary text-lg font-medium">Our AI has analyzed your response. Here's what it found:</p>
                 </div>
-                <h2 className="text-4xl lg:text-5xl font-black text-text tracking-tight mb-4">Thank you for your feedback!</h2>
-                <p className="text-text-secondary text-xl font-medium mt-3">Your insights help us improve the course experience.</p>
+
+                {sentiment && (
+                    <div className="bg-surface rounded-[2rem] border border-border shadow-sm p-8 space-y-6">
+                        <h3 className="text-xl font-black text-text flex items-center gap-3">
+                            <span className="p-2.5 bg-accent-light text-accent rounded-xl border border-accent/20">🧠</span>
+                            NLP Sentiment Analysis
+                        </h3>
+                        <div className={`flex items-center gap-5 p-6 rounded-2xl border ${sc.bg}`}>
+                            <span className="text-4xl">{sc.icon}</span>
+                            <div className="flex-1">
+                                <div className={`text-2xl font-black ${sc.text}`}>{sc.label} Sentiment</div>
+                                <div className="flex gap-4 mt-3">
+                                    {['positive', 'negative', 'neutral'].map(k => (
+                                        <div key={k} className="flex-1">
+                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">{k}</div>
+                                            <div className="w-full h-2 bg-surface-elevated rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-1000 ${
+                                                        k === 'positive' ? 'bg-success' : k === 'negative' ? 'bg-danger' : 'bg-text-muted'
+                                                    }`}
+                                                    style={{ width: `${((sentiment[k] || 0) * 100).toFixed(0)}%` }}
+                                                />
+                                            </div>
+                                            <div className="text-xs font-bold text-text-muted mt-0.5">{((sentiment[k] || 0) * 100).toFixed(0)}%</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {keywords.length > 0 && (
+                            <div>
+                                <div className="text-sm font-black text-text-muted uppercase tracking-widest mb-3">Key Themes Extracted</div>
+                                <div className="flex flex-wrap gap-3">
+                                    {keywords.map((kw, i) => (
+                                        <span key={i} className="px-4 py-2 bg-accent-light text-accent border border-accent/20 rounded-xl text-sm font-bold tracking-wide">
+                                            #{kw}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <button className="btn btn-primary btn-lg shadow-accent w-full py-5 text-xl" onClick={onComplete}>
+                    Continue to Dashboard <ArrowRight size={24} className="ml-2" />
+                </button>
             </div>
         );
     }
