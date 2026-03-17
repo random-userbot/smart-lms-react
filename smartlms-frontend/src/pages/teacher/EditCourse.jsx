@@ -157,7 +157,7 @@ export default function EditCourse() {
                                         </div>
 
                                         <div className="flex items-center gap-3 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity mt-4 sm:mt-0 justify-end w-full sm:w-auto border-t sm:border-t-0 border-border pt-4 sm:pt-0">
-                                            <button className="btn btn-sm bg-violet-100 text-violet-700 hover:bg-violet-200 border-violet-200" title="Generate AI Quiz" onClick={() => setShowAIQuiz({ open: true, lectureId: l.id })}>
+                                            <button className="btn btn-sm bg-accent-light text-accent hover:bg-accent hover:text-white border-accent/20" title="Generate AI Quiz" onClick={() => setShowAIQuiz({ open: true, lectureId: l.id })}>
                                                 <Sparkles size={16} /> AI Quiz
                                             </button>
                                             <button className="btn btn-sm bg-danger-light text-danger hover:bg-danger hover:text-white border-danger/20" title="Delete Lecture" onClick={() => handleDeleteLecture(l.id)}>
