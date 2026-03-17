@@ -248,7 +248,7 @@ export default function EditCourse() {
                     <div className="bg-surface rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden transform transition-all scale-in-center border border-border" onClick={e => e.stopPropagation()}>
                         <div className="p-8 md:p-10 border-b border-border bg-surface-alt">
                             <h2 className="text-3xl font-black text-text flex items-center gap-3 mb-2">
-                                <Sparkles className="text-violet-500" size={32} /> Generate AI Quiz
+                                <Sparkles className="text-accent" size={32} /> Generate AI Quiz
                             </h2>
                             <p className="text-text-secondary text-base mt-2 font-medium">
                                 AI will generate quiz questions from the lecture transcript using ICAP-aligned question types.
