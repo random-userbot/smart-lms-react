@@ -5,10 +5,3 @@ export/**/*.onnx filter=lfs diff=lfs merge=lfs -text
 export/**/*.pt filter=lfs diff=lfs merge=lfs -text
 export/**/*.pth filter=lfs diff=lfs merge=lfs -text
 export/**/*.ckpt filter=lfs diff=lfs merge=lfs -text
-export/*.h5 filter=lfs diff=lfs merge=lfs -text
-export//.keras filter=lfs diff=lfs merge=lfs -text
-export/**/.onnx filter=lfs diff=lfs merge=lfs -text
-export//*.pt filter=lfs diff=lfs merge=lfs -text
-export//.pth filter=lfs diff=lfs merge=lfs -text
-export/**/.ckpt filter=lfs diff=lfs merge=lfs -text
-export//*.h5 filter=lfs diff=lfs merge=lfs -text
