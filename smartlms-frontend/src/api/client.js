@@ -58,6 +58,9 @@ export const lecturesAPI = {
     get: (id) => api.get(`/api/lectures/${id}`),
     create: (data) => api.post('/api/lectures', data),
     update: (id, data) => api.put(`/api/lectures/${id}`, data),
+    uploadVideo: (lectureId, formData) => api.post(`/api/lectures/${lectureId}/upload-video`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    }),
     delete: (id) => api.delete(`/api/lectures/${id}`),
     importYouTube: (data) => api.post('/api/lectures/youtube-import', data),
     getMaterials: (id) => api.get(`/api/lectures/${id}/materials`),
@@ -73,19 +76,24 @@ export const engagementAPI = {
     submit: (data) => api.post('/api/engagement/submit', data),
     getHistory: (lectureId) => api.get(`/api/engagement/history/${lectureId}`),
     getStudentSummary: (studentId) => api.get(`/api/engagement/student-summary/${studentId}`),
-    getHeatmap: (lectureId) => api.get(`/api/engagement/heatmap/${lectureId}`),
+    getHeatmap: (lectureId, params) => api.get(`/api/engagement/heatmap/${lectureId}`, { params }),
+    getMyHeatmap: (lectureId) => api.get(`/api/engagement/heatmap/${lectureId}/me`),
     getModelInfo: () => api.get('/api/engagement/model-info'),
+    listModels: () => api.get('/api/engagement/models'),
+    inferModel: (data) => api.post('/api/engagement/models/infer', data),
 };
 
 // ─── Quizzes ────────────────────────────────────────────
 export const quizzesAPI = {
     getByLecture: (lectureId) => api.get(`/api/quizzes/lecture/${lectureId}`),
+    getMine: () => api.get('/api/quizzes/mine'),
     create: (data) => api.post('/api/quizzes', data),
     update: (id, data) => api.put(`/api/quizzes/${id}`, data),
     delete: (id) => api.delete(`/api/quizzes/${id}`),
     submitAttempt: (data) => api.post('/api/quizzes/attempt', data),
     getAttempts: (quizId) => api.get(`/api/quizzes/attempts/${quizId}`),
     generateAI: (data) => api.post('/api/quizzes/generate-ai', data),
+    refineAI: (data) => api.post('/api/quizzes/generate-ai-refine', data),
 };
 
 // ─── Feedback ───────────────────────────────────────────
@@ -153,6 +161,7 @@ export const messagesAPI = {
     getConversations: () => api.get('/api/messages/conversations'),
     getWith: (userId, params) => api.get(`/api/messages/with/${userId}`, { params }),
     getUnreadCount: () => api.get('/api/messages/unread-count'),
+    search: (params) => api.get('/api/messages/search', { params }),
     markRead: (id) => api.put(`/api/messages/${id}/read`),
     getStudentAnalytics: (studentId, courseId) => api.get(`/api/messages/student-analytics/${studentId}`, { params: { course_id: courseId } }),
     bulkSend: (data) => api.post('/api/messages/bulk-send', data),
@@ -161,6 +170,10 @@ export const messagesAPI = {
 
 // ─── Tutor ──────────────────────────────────────────────
 export const tutorAPI = {
+    getSessions: () => api.get('/api/tutor/sessions'),
+    createSession: (data) => api.post(`/api/tutor/sessions?title=${encodeURIComponent(data.title)}&mode=${encodeURIComponent(data.mode)}`),
+    getSessionMessages: (id) => api.get(`/api/tutor/sessions/${id}/messages`),
+    deleteSession: (id) => api.delete(`/api/tutor/sessions/${id}`),
     chat: async (data, onChunk) => {
         const response = await fetch(`${API_BASE_URL}/api/tutor/chat`, {
             method: 'POST',

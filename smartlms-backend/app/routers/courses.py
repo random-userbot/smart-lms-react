@@ -5,7 +5,8 @@ Course CRUD, enrollment, and management endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -13,7 +14,10 @@ from datetime import datetime
 from app.database import get_db
 from app.models.models import (
     User, UserRole, Course, Enrollment, EnrollmentStatus,
-    Lecture, Notification, NotificationType
+    Lecture, Notification, NotificationType,
+    Assignment, AssignmentSubmission, Material, Feedback,
+    TeachingScore, Message, EngagementLog, Attendance,
+    Quiz, QuizAttempt, ICAPLog, ActivityLog
 )
 from app.middleware.auth import get_current_user, require_teacher_or_admin
 from app.services.debug_logger import debug_logger
@@ -123,7 +127,14 @@ async def list_courses(
         query = query.where(Course.teacher_id == current_user.id)
 
     if search:
-        query = query.where(Course.title.ilike(f"%{search}%"))
+        # Search in course title OR in any lecture title within the course
+        lecture_subquery = select(Lecture.course_id).where(Lecture.title.ilike(f"%{search}%"))
+        query = query.where(
+            or_(
+                Course.title.ilike(f"%{search}%"),
+                Course.id.in_(lecture_subquery)
+            )
+        )
     if category:
         query = query.where(Course.category == category)
     if teacher_id:
@@ -299,6 +310,35 @@ async def delete_course(
     if course.teacher_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Not your course")
 
+    # Explicitly clear all dependent records to guarantee full cleanup.
+    lecture_ids_result = await db.execute(select(Lecture.id).where(Lecture.course_id == course_id))
+    lecture_ids = lecture_ids_result.scalars().all()
+
+    if lecture_ids:
+        quiz_ids_result = await db.execute(select(Quiz.id).where(Quiz.lecture_id.in_(lecture_ids)))
+        quiz_ids = quiz_ids_result.scalars().all()
+
+        if quiz_ids:
+            await db.execute(delete(QuizAttempt).where(QuizAttempt.quiz_id.in_(quiz_ids)))
+
+        await db.execute(delete(Quiz).where(Quiz.lecture_id.in_(lecture_ids)))
+        await db.execute(delete(EngagementLog).where(EngagementLog.lecture_id.in_(lecture_ids)))
+        await db.execute(delete(Attendance).where(Attendance.lecture_id.in_(lecture_ids)))
+        await db.execute(delete(ICAPLog).where(ICAPLog.lecture_id.in_(lecture_ids)))
+
+    await db.execute(delete(AssignmentSubmission).where(AssignmentSubmission.assignment_id.in_(
+        select(Assignment.id).where(Assignment.course_id == course_id)
+    )))
+    await db.execute(delete(Assignment).where(Assignment.course_id == course_id))
+    await db.execute(delete(Feedback).where(Feedback.course_id == course_id))
+    await db.execute(delete(Material).where(Material.course_id == course_id))
+    await db.execute(delete(Enrollment).where(Enrollment.course_id == course_id))
+    await db.execute(delete(TeachingScore).where(TeachingScore.course_id == course_id))
+    await db.execute(delete(Message).where(Message.course_id == course_id))
+    await db.execute(delete(Notification).where(Notification.extra_data.contains({"course_id": course_id})))
+    await db.execute(delete(ActivityLog).where(ActivityLog.details.contains({"course_id": course_id})))
+    await db.execute(delete(Lecture).where(Lecture.course_id == course_id))
+
     await db.delete(course)
     await db.commit()
 
@@ -326,21 +366,20 @@ async def enroll_in_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    # Check not already enrolled
+    # Check not already enrolled (fast path)
     existing = await db.execute(
         select(Enrollment).where(
             Enrollment.student_id == current_user.id,
             Enrollment.course_id == course_id,
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Already enrolled")
-
-    enrollment = Enrollment(
-        student_id=current_user.id,
-        course_id=course_id,
-    )
-    db.add(enrollment)
+    enrollment = existing.scalar_one_or_none()
+    if not enrollment:
+        enrollment = Enrollment(
+            student_id=current_user.id,
+            course_id=course_id,
+        )
+        db.add(enrollment)
 
     # Notify teacher
     notification = Notification(
@@ -353,7 +392,21 @@ async def enroll_in_course(
     )
     db.add(notification)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Race condition: another request inserted enrollment first.
+        await db.rollback()
+        existing_after_race = await db.execute(
+            select(Enrollment).where(
+                Enrollment.student_id == current_user.id,
+                Enrollment.course_id == course_id,
+            )
+        )
+        enrollment = existing_after_race.scalar_one_or_none()
+        if not enrollment:
+            raise HTTPException(status_code=500, detail="Enrollment failed, please retry")
+
     await db.refresh(enrollment)
 
     debug_logger.log("activity", f"Enrolled in: {course.title}",

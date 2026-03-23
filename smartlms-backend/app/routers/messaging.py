@@ -125,7 +125,7 @@ async def send_message(
     notification = Notification(
         user_id=msg.receiver_id,
         sender_id=current_user.id,
-        type=NotificationType.TEACHER_MESSAGE,
+        type=NotificationType.PRIVATE_MESSAGE,
         title=notif_title,
         message=msg.content[:200] + ("..." if len(msg.content) > 200 else ""),
         extra_data={
@@ -301,6 +301,64 @@ async def get_unread_count(
         )
     )
     return {"unread_count": result.scalar() or 0}
+
+
+@router.get("/search", response_model=List[MessageResponse])
+async def search_messages(
+    q: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Search messages by content for the current user"""
+    from app.models.models import User, Course
+    
+    result = await db.execute(
+        select(Message).where(
+            and_(
+                or_(
+                    Message.sender_id == current_user.id,
+                    Message.receiver_id == current_user.id
+                ),
+                Message.content.ilike(f"%{q}%")
+            )
+        ).order_by(desc(Message.created_at)).limit(50)
+    )
+    
+    messages = result.scalars().all()
+    
+    # We need to build responses with sender names
+    responses = []
+    for m in messages:
+        sender_result = await db.execute(select(User).where(User.id == m.sender_id))
+        sender = sender_result.scalar_one()
+        
+        receiver_result = await db.execute(select(User).where(User.id == m.receiver_id))
+        receiver = receiver_result.scalar_one()
+        
+        course_title = None
+        if m.course_id:
+            c_res = await db.execute(select(Course.title).where(Course.id == m.course_id))
+            course_title = c_res.scalar()
+            
+        responses.append(MessageResponse(
+            id=m.id,
+            sender_id=m.sender_id,
+            sender_name=sender.full_name,
+            sender_role=sender.role.value,
+            receiver_id=m.receiver_id,
+            receiver_name=receiver.full_name,
+            subject=m.subject,
+            content=m.content,
+            category=m.category.value,
+            course_id=m.course_id,
+            course_title=course_title,
+            is_read=m.is_read,
+            parent_id=m.parent_id,
+            analytics_context=m.analytics_context,
+            created_at=m.created_at.isoformat(),
+        ))
+    
+    return responses
 
 
 # ─── Mark Message Read ───────────────────────────────────
@@ -482,7 +540,7 @@ async def bulk_send_messages(
         notification = Notification(
             user_id=sid,
             sender_id=current_user.id,
-            type=NotificationType.TEACHER_MESSAGE,
+            type=NotificationType.PRIVATE_MESSAGE,
             title=f"Message from {current_user.full_name}",
             message=content[:200] + ("..." if len(content) > 200 else ""),
             extra_data={"message_id": msg.id, "course_id": data.get("course_id")},

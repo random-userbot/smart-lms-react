@@ -1,0 +1,24 @@
+{
+  "model": "model1_bilstm_conservative",
+  "timestamp": "20251117_152011",
+  "test_loss": 12.329414367675781,
+  "overall_accuracy": 0.3398962148962149,
+  "per_dimension_accuracy": {
+    "Boredom": 0.26373626373626374,
+    "Engagement": 0.2796092796092796,
+    "Confusion": 0.4456654456654457,
+    "Frustration": 0.3705738705738706
+  },
+  "improvement_from_baseline": -24.590378510378507,
+  "improvement_from_failed": 11.53962148962149,
+  "training_epochs": 17,
+  "approach": "conservative",
+  "improvements": [
+    "moderate_class_weights_max_10x",
+    "simple_weighted_loss",
+    "original_architecture_128_64",
+    "no_data_augmentation",
+    "standard_training"
+  ],
+  "parameters": 585489
+}

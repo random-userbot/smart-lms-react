@@ -66,8 +66,12 @@ export default function Messages() {
             // Reload messages
             selectConversation(selectedUser.id);
             trackEvent?.('message_sent', { to: selectedUser.id });
-        } catch { }
-        setSending(false);
+        } catch (err) { 
+            console.error("Failed to send message:", err);
+            // Optionally, add a toast error here
+        } finally {
+            setSending(false);
+        }
     };
 
     const filteredConversations = conversations.filter(c =>
@@ -81,7 +85,7 @@ export default function Messages() {
     );
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
             <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-8 border-l-8 border-accent pl-6 flex items-center gap-4 py-2">
                 <MessageSquare className="text-accent" size={40} />
                 Messages
@@ -116,10 +120,10 @@ export default function Messages() {
                                 className={`p-6 cursor-pointer transition-all border-b border-border hover:bg-surface ${selectedUser?.id === conv.other_user_id ? 'bg-surface border-l-[6px] border-l-accent' : 'border-l-[6px] border-l-transparent'}`}
                             >
                                 <div className="flex items-start justify-between gap-4">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-3 mb-1">
+                                    <div className="flex-1 min-w-0 pr-3">
+                                        <div className="flex items-center gap-2 mb-1 w-full">
                                             <span className="font-bold text-lg text-text truncate">{conv.other_user_name}</span>
-                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${conv.other_user_role === 'teacher' ? 'bg-accent-light text-accent' : 'bg-success-light text-success'}`}>
+                                            <span className={`flex-shrink-0 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${conv.other_user_role === 'teacher' ? 'bg-accent-light text-accent' : 'bg-success-light text-success'}`}>
                                                 {conv.other_user_role}
                                             </span>
                                         </div>
@@ -131,8 +135,8 @@ export default function Messages() {
                                         )}
                                         <p className={`text-base truncate mt-1 ${conv.unread_count > 0 ? 'text-text font-bold' : 'text-text-secondary font-medium'}`}>{conv.last_message}</p>
                                     </div>
-                                    <div className="flex flex-col items-end gap-2 shrink-0">
-                                        <span className="text-xs font-bold text-text-muted uppercase tracking-widest">
+                                    <div className="flex flex-col items-end gap-2 shrink-0 pl-2">
+                                        <span className="text-xs font-bold text-text-muted uppercase tracking-widest whitespace-nowrap">
                                             {new Date(conv.last_message_at).toLocaleDateString()}
                                         </span>
                                         {conv.unread_count > 0 && (
@@ -168,8 +172,8 @@ export default function Messages() {
                                 <div className="w-14 h-14 rounded-2xl bg-accent-light border border-accent/20 flex items-center justify-center shadow-inner">
                                     <User size={24} className="text-accent" />
                                 </div>
-                                <div className="flex-1">
-                                    <div className="font-black text-xl text-text">{selectedUser.name}</div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-black text-xl text-text truncate">{selectedUser.name}</div>
                                     <span className={`text-xs font-black uppercase tracking-widest mt-0.5 inline-block ${selectedUser.role === 'teacher' ? 'text-accent' : 'text-success'}`}>
                                         {selectedUser.role}
                                     </span>
@@ -195,7 +199,7 @@ export default function Messages() {
                                                     </span>
                                                 </div>
                                             )}
-                                            <div className={`max-w-[85%] md:max-w-[70%] ${isMine ? 'order-2' : ''}`}>
+                                            <div className={`max-w-[90%] md:max-w-[75%] lg:max-w-[65%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
                                                 {/* Category badge for non-general messages */}
                                                 {msg.category !== 'general' && !isMine && (
                                                     <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider mb-2 border shadow-sm ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}>
@@ -204,20 +208,20 @@ export default function Messages() {
                                                     </div>
                                                 )}
                                                 {msg.subject && !isMine && (
-                                                    <div className="text-sm font-black text-text-secondary mb-2 flex items-center gap-2">
-                                                        <Sparkles size={14} className="text-warning" />
-                                                        {msg.subject}
+                                                    <div className="text-sm font-black text-text-secondary mb-2 flex items-center gap-2 max-w-full">
+                                                        <Sparkles size={14} className="text-warning shrink-0" />
+                                                        <span className="truncate">{msg.subject}</span>
                                                     </div>
                                                 )}
-                                                <div className={`px-5 py-4 rounded-2xl shadow-sm border ${isMine
+                                                <div className={`px-5 py-4 rounded-2xl shadow-sm border w-full ${isMine
                                                     ? 'bg-accent text-white rounded-br-sm border-accent shadow-accent/20'
                                                     : 'bg-surface text-text rounded-bl-sm border-border'
                                                     }`}>
-                                                    <p className="text-base font-medium whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                                    <p className="text-base font-medium whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                                                     
                                                     {/* Analytics context card */}
                                                     {msg.analytics_context && !isMine && (
-                                                        <div className="mt-4 p-3 bg-surface-alt rounded-xl text-xs text-text-secondary font-black border border-border uppercase tracking-widest flex flex-wrap gap-4">
+                                                        <div className="mt-4 p-3 bg-surface-alt rounded-xl text-xs text-text-secondary font-black border border-border uppercase tracking-widest flex flex-wrap gap-4 w-full">
                                                             {msg.analytics_context.engagement_score != null && (
                                                                 <span className="flex items-center gap-1.5"><TrendingDown size={14} className="opacity-50"/> Engagement: <span className="text-text">{msg.analytics_context.engagement_score}%</span></span>
                                                             )}
@@ -228,7 +232,7 @@ export default function Messages() {
                                                     )}
                                                 </div>
 
-                                                <div className={`flex items-center gap-1.5 mt-2 text-xs font-black uppercase tracking-widest ${isMine ? 'justify-end text-text-muted' : 'text-text-muted'}`}>
+                                                <div className={`flex items-center gap-1.5 mt-2 text-xs font-black uppercase tracking-widest text-text-muted`}>
                                                     <Clock size={12} className="opacity-70"/>
                                                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     {isMine && (msg.is_read ? <CheckCheck size={14} className="text-success ml-1" /> : <Check size={14} className="ml-1" />)}

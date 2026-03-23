@@ -1,24 +1,32 @@
 """
 Smart LMS - Lectures Router
-Lecture CRUD, video upload, YouTube import, transcript extraction
+Lecture CRUD, video upload, YouTube import, transcript extraction, and materials.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import List, Optional
-from pydantic import BaseModel, Field
+import asyncio
+import os
+from uuid import uuid4
 from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
 from app.database import get_db
-from app.models.models import User, UserRole, Course, Lecture, Material
 from app.middleware.auth import get_current_user, require_teacher_or_admin
+from app.models.models import User, UserRole, Course, Lecture, Material
 from app.services.debug_logger import debug_logger
-import json
+from app.services.youtube_service import (
+    extract_playlist_videos,
+    get_video_transcript,
+    normalize_youtube_watch_url,
+)
 
 router = APIRouter(prefix="/api/lectures", tags=["Lectures"])
 
-
-# ─── Schemas ─────────────────────────────────────────────
 
 class LectureCreate(BaseModel):
     course_id: str
@@ -61,7 +69,7 @@ class LectureResponse(BaseModel):
 
 class YouTubeImportRequest(BaseModel):
     course_id: str
-    playlist_url: str  # YouTube playlist URL
+    playlist_url: str
     import_transcripts: bool = True
 
 
@@ -79,7 +87,69 @@ class MaterialResponse(BaseModel):
         from_attributes = True
 
 
-# ─── Routes ──────────────────────────────────────────────
+def _safe_filename(name: str) -> str:
+    base = os.path.basename(name or "file")
+    return "".join(ch for ch in base if ch.isalnum() or ch in {"-", "_", "."}) or "file"
+
+
+def _public_media_url(request: Request, rel_path: str) -> str:
+    base = str(request.base_url).rstrip("/")
+    return f"{base}/media/{rel_path.lstrip('/')}"
+
+
+async def _save_uploaded_file(file: UploadFile, subdir: str, max_bytes: int):
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, subdir), exist_ok=True)
+
+    safe_name = _safe_filename(file.filename or "upload.bin")
+    ext = os.path.splitext(safe_name)[1]
+    stored_name = f"{uuid4().hex}{ext}"
+    rel_path = os.path.join(subdir, stored_name).replace("\\", "/")
+    abs_path = os.path.join(settings.UPLOAD_DIR, subdir, stored_name)
+
+    size = 0
+    try:
+        with open(abs_path, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Max {max_bytes // (1024 * 1024)} MB",
+                    )
+                out.write(chunk)
+    except Exception:
+        if os.path.exists(abs_path):
+            os.remove(abs_path)
+        raise
+    finally:
+        await file.close()
+
+    return rel_path, size
+
+
+async def _generate_lecture_transcript_background(lecture_id: str, prefer_local: bool = False):
+    from app.database import async_session
+
+    async with async_session() as session:
+        try:
+            res = await session.execute(select(Lecture).where(Lecture.id == lecture_id))
+            lecture = res.scalar_one_or_none()
+            if not lecture or not lecture.youtube_url or lecture.transcript:
+                return
+
+            transcript = await get_video_transcript(lecture.youtube_url, prefer_local=prefer_local)
+            if transcript:
+                lecture.transcript = transcript
+                await session.commit()
+                debug_logger.log("activity", f"Transcript generated for lecture: {lecture.title}")
+            else:
+                debug_logger.log("error", f"Transcript generation returned empty for lecture {lecture_id}")
+        except Exception as e:
+            debug_logger.log("error", f"Transcript generation failed for lecture {lecture_id}: {str(e)}")
+
 
 @router.get("/course/{course_id}", response_model=List[LectureResponse])
 async def get_course_lectures(
@@ -87,13 +157,10 @@ async def get_course_lectures(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get all lectures for a course"""
     result = await db.execute(
-        select(Lecture).where(Lecture.course_id == course_id)
-        .order_by(Lecture.order_index)
+        select(Lecture).where(Lecture.course_id == course_id).order_by(Lecture.order_index)
     )
-    lectures = result.scalars().all()
-    return [LectureResponse.model_validate(l) for l in lectures]
+    return [LectureResponse.model_validate(l) for l in result.scalars().all()]
 
 
 @router.get("/{lecture_id}", response_model=LectureResponse)
@@ -102,7 +169,6 @@ async def get_lecture(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get a single lecture"""
     result = await db.execute(select(Lecture).where(Lecture.id == lecture_id))
     lecture = result.scalar_one_or_none()
     if not lecture:
@@ -113,11 +179,10 @@ async def get_lecture(
 @router.post("", response_model=LectureResponse, status_code=201)
 async def create_lecture(
     request: LectureCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    """Create a new lecture"""
-    # Verify course ownership
     course_result = await db.execute(select(Course).where(Course.id == request.course_id))
     course = course_result.scalar_one_or_none()
     if not course:
@@ -125,7 +190,6 @@ async def create_lecture(
     if course.teacher_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Not your course")
 
-    # Auto-set order_index if not provided
     if request.order_index == 0:
         count_result = await db.execute(
             select(func.count()).select_from(Lecture).where(Lecture.course_id == request.course_id)
@@ -137,7 +201,7 @@ async def create_lecture(
         title=request.title,
         description=request.description,
         video_url=request.video_url,
-        youtube_url=request.youtube_url,
+        youtube_url=normalize_youtube_watch_url(request.youtube_url),
         duration=request.duration,
         order_index=request.order_index,
     )
@@ -145,9 +209,10 @@ async def create_lecture(
     await db.commit()
     await db.refresh(lecture)
 
-    debug_logger.log("activity", f"Lecture created: {lecture.title} in course {course.title}",
-                     user_id=current_user.id)
+    if lecture.youtube_url and not lecture.transcript:
+        background_tasks.add_task(_generate_lecture_transcript_background, lecture.id, True)
 
+    debug_logger.log("activity", f"Lecture created: {lecture.title} in course {course.title}", user_id=current_user.id)
     return LectureResponse.model_validate(lecture)
 
 
@@ -155,29 +220,57 @@ async def create_lecture(
 async def update_lecture(
     lecture_id: str,
     request: LectureUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    """Update a lecture"""
-    result = await db.execute(
-        select(Lecture).join(Course).where(
-            Lecture.id == lecture_id,
-        )
-    )
+    result = await db.execute(select(Lecture).join(Course).where(Lecture.id == lecture_id))
     lecture = result.scalar_one_or_none()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
 
     for field, value in request.model_dump(exclude_unset=True).items():
+        if field == "youtube_url":
+            value = normalize_youtube_watch_url(value)
         setattr(lecture, field, value)
+
+    should_generate_transcript = bool(lecture.youtube_url) and not lecture.transcript
 
     await db.commit()
     await db.refresh(lecture)
 
-    debug_logger.log("activity", f"Lecture updated: {lecture.title}",
-                     user_id=current_user.id)
+    if should_generate_transcript:
+        background_tasks.add_task(_generate_lecture_transcript_background, lecture.id, True)
 
+    debug_logger.log("activity", f"Lecture updated: {lecture.title}", user_id=current_user.id)
     return LectureResponse.model_validate(lecture)
+
+
+@router.post("/{lecture_id}/upload-video")
+async def upload_lecture_video(
+    lecture_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    res = await db.execute(select(Lecture).join(Course).where(Lecture.id == lecture_id))
+    lecture = res.scalar_one_or_none()
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    max_bytes = settings.MAX_VIDEO_UPLOAD_MB * 1024 * 1024
+    rel_path, file_size = await _save_uploaded_file(file, "videos", max_bytes)
+    lecture.video_url = _public_media_url(request, rel_path)
+    await db.commit()
+    await db.refresh(lecture)
+
+    return {
+        "lecture_id": lecture.id,
+        "video_url": lecture.video_url,
+        "file_size": file_size,
+        "message": "Video uploaded successfully",
+    }
 
 
 @router.delete("/{lecture_id}")
@@ -186,7 +279,6 @@ async def delete_lecture(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    """Delete a lecture"""
     result = await db.execute(select(Lecture).where(Lecture.id == lecture_id))
     lecture = result.scalar_one_or_none()
     if not lecture:
@@ -195,32 +287,27 @@ async def delete_lecture(
     await db.delete(lecture)
     await db.commit()
 
-    debug_logger.log("activity", f"Lecture deleted: {lecture.title}",
-                     user_id=current_user.id)
-
+    debug_logger.log("activity", f"Lecture deleted: {lecture.title}", user_id=current_user.id)
     return {"message": "Lecture deleted"}
 
 
 @router.post("/youtube-import")
 async def import_youtube_playlist(
     request: YouTubeImportRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    """Import YouTube playlist as lectures"""
-    # Verify course ownership
     course_result = await db.execute(select(Course).where(Course.id == request.course_id))
     course = course_result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
     try:
-        from app.services.youtube_service import extract_playlist_videos
         videos = await extract_playlist_videos(request.playlist_url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to import playlist: {str(e)}")
 
-    # Get current lecture count for ordering
     count_result = await db.execute(
         select(func.count()).select_from(Lecture).where(Lecture.course_id == request.course_id)
     )
@@ -232,7 +319,7 @@ async def import_youtube_playlist(
             course_id=request.course_id,
             title=video["title"],
             description=video.get("description", ""),
-            youtube_url=video["url"],
+            youtube_url=normalize_youtube_watch_url(video.get("url")),
             thumbnail_url=video.get("thumbnail"),
             duration=video.get("duration", 0),
             order_index=start_index + i,
@@ -242,17 +329,32 @@ async def import_youtube_playlist(
 
     await db.commit()
 
-    debug_logger.log("activity",
-                     f"Imported {len(created_lectures)} videos from YouTube playlist",
-                     user_id=current_user.id)
+    async def fetch_playlist_transcripts(lecture_ids: List[str]):
+        from app.database import async_session
 
-    return {
-        "message": f"Imported {len(created_lectures)} lectures",
-        "count": len(created_lectures),
-    }
+        batch_size = 4
+        async with async_session() as session:
+            for i, lid in enumerate(lecture_ids, start=1):
+                try:
+                    res = await session.execute(select(Lecture).where(Lecture.id == lid))
+                    lec = res.scalar_one_or_none()
+                    if lec and lec.youtube_url and not lec.transcript:
+                        transcript = await get_video_transcript(lec.youtube_url, prefer_local=True)
+                        if transcript:
+                            lec.transcript = transcript
+                            await session.commit()
+                    if i % batch_size == 0:
+                        await asyncio.sleep(1.5)
+                except Exception as e:
+                    debug_logger.log("error", f"Auto-transcript fetch failed for {lid}: {str(e)}")
+                    await asyncio.sleep(2.0)
 
+    if request.import_transcripts:
+        background_tasks.add_task(fetch_playlist_transcripts, [lec.id for lec in created_lectures])
 
-# ─── Materials ───────────────────────────────────────────
+    debug_logger.log("activity", f"Imported {len(created_lectures)} videos from YouTube playlist", user_id=current_user.id)
+    return {"message": f"Imported {len(created_lectures)} lectures", "count": len(created_lectures)}
+
 
 @router.get("/{lecture_id}/materials", response_model=List[MaterialResponse])
 async def get_lecture_materials(
@@ -260,12 +362,8 @@ async def get_lecture_materials(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get materials attached to a lecture"""
-    result = await db.execute(
-        select(Material).where(Material.lecture_id == lecture_id)
-    )
-    materials = result.scalars().all()
-    return [MaterialResponse.model_validate(m) for m in materials]
+    result = await db.execute(select(Material).where(Material.lecture_id == lecture_id))
+    return [MaterialResponse.model_validate(m) for m in result.scalars().all()]
 
 
 @router.get("/course/{course_id}/materials", response_model=List[MaterialResponse])
@@ -274,41 +372,53 @@ async def get_course_materials(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get all materials for a course"""
-    result = await db.execute(
-        select(Material).where(Material.course_id == course_id)
-    )
-    materials = result.scalars().all()
-    return [MaterialResponse.model_validate(m) for m in materials]
+    result = await db.execute(select(Material).where(Material.course_id == course_id))
+    return [MaterialResponse.model_validate(m) for m in result.scalars().all()]
 
 
 @router.post("/materials", response_model=MaterialResponse, status_code=201)
 async def add_material(
+    request: Request,
     course_id: str = Form(...),
     lecture_id: Optional[str] = Form(None),
     title: str = Form(...),
-    file_url: str = Form(...),
-    file_type: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    file_url: Optional[str] = Form(None),
+    file_type: Optional[str] = Form(None),
     file_size: int = Form(0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    """Add a material to a course/lecture"""
+    if not file and not file_url:
+        raise HTTPException(status_code=400, detail="Provide either file upload or file_url")
+
+    resolved_url = file_url
+    resolved_type = file_type or "application/octet-stream"
+    resolved_size = file_size or 0
+
+    if file:
+        max_bytes = settings.MAX_MATERIAL_UPLOAD_MB * 1024 * 1024
+        rel_path, uploaded_size = await _save_uploaded_file(file, "materials", max_bytes)
+        resolved_url = _public_media_url(request, rel_path)
+        resolved_type = file.content_type or resolved_type
+        resolved_size = uploaded_size
+
+    if not resolved_url:
+        raise HTTPException(status_code=400, detail="Material URL could not be resolved")
+
     material = Material(
         course_id=course_id,
         lecture_id=lecture_id,
         title=title,
-        file_url=file_url,
-        file_type=file_type,
-        file_size=file_size,
+        file_url=resolved_url,
+        file_type=resolved_type,
+        file_size=resolved_size,
     )
     db.add(material)
     await db.commit()
     await db.refresh(material)
 
-    debug_logger.log("activity", f"Material added: {title}",
-                     user_id=current_user.id)
-
+    debug_logger.log("activity", f"Material added: {title}", user_id=current_user.id)
     return MaterialResponse.model_validate(material)
 
 
@@ -318,7 +428,6 @@ async def delete_material(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    """Delete a material"""
     result = await db.execute(select(Material).where(Material.id == material_id))
     material = result.scalar_one_or_none()
     if not material:
@@ -326,5 +435,4 @@ async def delete_material(
 
     await db.delete(material)
     await db.commit()
-
     return {"message": "Material deleted"}

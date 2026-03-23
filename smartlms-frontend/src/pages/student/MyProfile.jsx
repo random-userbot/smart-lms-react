@@ -69,7 +69,7 @@ export default function MyProfile() {
     ];
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 space-y-8 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 space-y-8 animate-in fade-in">
             {/* Header */}
             <div className="mb-10">
                 <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight border-l-8 border-accent pl-6 py-2">Profile Settings</h1>

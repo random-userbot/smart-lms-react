@@ -57,17 +57,21 @@ export default function TeachingDashboard() {
     const [studentAnalytics, setStudentAnalytics] = useState(null);
 
     useEffect(() => {
+        let isMounted = true;
         coursesAPI.list().then(res => {
+            if (!isMounted) return;
             const c = res.data || [];
             if (c.length > 0) {
-                // Ensure we select a teacher-owned course here ideally.
-                // Assuming c are the courses they teach.
                 setCourses(c);
                 setSelectedCourse(c[0].id);
             } else {
                 setLoading(false);
             }
-        }).catch(() => setLoading(false));
+        }).catch(err => {
+            console.error("Failed to fetch courses:", err);
+            if (isMounted) setLoading(false);
+        });
+        return () => { isMounted = false; };
     }, []);
 
     useEffect(() => {
@@ -154,186 +158,353 @@ export default function TeachingDashboard() {
         setMessageCategory(template.category);
     };
 
-    const renderCourseView = () => (
-        <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            {score ? (
-                <>
-                    {/* Overall score */}
-                    <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-12 text-center relative overflow-hidden mb-10 group">
-                        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700 pointer-events-none"><Activity size={320} /></div>
+    const renderCourseView = () => {
+        // Prepare helpers
+        const overall = score?.overall_score || 0;
+        let scoreLabel = 'Needs Improvement';
+        let scoreColor = 'text-danger';
+        let scoreBg = 'bg-danger-light border-danger/20';
+        if (overall >= 70) { scoreLabel = 'Excellent'; scoreColor = 'text-success'; scoreBg = 'bg-success-light border-success/20'; }
+        else if (overall >= 50) { scoreLabel = 'Good'; scoreColor = 'text-warning'; scoreBg = 'bg-warning-light border-warning/20'; }
 
-                        <div className={`text-8xl font-black mb-4 tracking-tighter ${score.overall_score >= 70 ? 'text-success' : score.overall_score >= 50 ? 'text-warning' : 'text-danger'}`}>
-                            {score.overall_score.toFixed(1)}
-                        </div>
-                        <div className="text-text-secondary text-2xl font-black uppercase tracking-widest mb-8">Overall Teaching Score</div>
-                        <div className="flex flex-wrap gap-4 justify-center text-sm font-black text-text-muted">
-                            <span className="bg-surface-elevated px-6 py-3 rounded-[1.5rem] border border-border shadow-inner">{score.num_students} enrolled</span>
-                            <span className="bg-surface-elevated px-6 py-3 rounded-[1.5rem] border border-border shadow-inner">{score.num_lectures} published lectures</span>
-                            {score.total_sessions > 0 && (
-                                <span className="bg-surface-elevated px-6 py-3 rounded-[1.5rem] border border-border shadow-inner">{score.total_sessions} tracking sessions</span>
-                            )}
-                        </div>
-                    </div>
+        const primaryRec = score?.recommendations && score.recommendations.length > 0 
+                           ? score.recommendations[0] 
+                           : "Your teaching metrics are looking healthy. Keep up the great work!";
 
-                    {/* Component scores (v2) */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                        {(() => {
-                            const metricCards = [
-                                { key: 'engagement', label: 'Engagement', icon: Activity, color: 'text-accent bg-accent-light' },
-                                { key: 'engagement_trend', label: 'Engage Trend', icon: TrendingUp, color: 'text-info bg-info-light' },
-                                { key: 'quiz_performance', label: 'Quiz Score', icon: BarChart3, color: 'text-success bg-success-light' },
-                                { key: 'icap_score', label: 'ICAP Depth', icon: Brain, color: 'text-warning bg-warning-light' },
-                                { key: 'teacher_responsiveness', label: 'Responsiveness', icon: MessageSquare, color: 'text-primary bg-primary-light' },
-                                { key: 'attendance', label: 'Attendance', icon: Users, color: 'text-info bg-info-light' },
-                                { key: 'feedback', label: 'Feedback', icon: Target, color: 'text-danger bg-danger-light' },
-                                { key: 'completion_rate', label: 'Completion', icon: BookOpen, color: 'text-success bg-success-light' },
-                            ];
-                            return metricCards.map(({ key, label, icon: Icon, color }) => {
-                                const value = score.components?.[key];
-                                if (value === undefined || value === null) return null;
-                                return (
-                                    <div key={key} className="bg-surface rounded-[2rem] shadow-sm border border-border p-8 flex flex-col hover:border-accent/40 transition-colors group">
-                                        <div className="flex items-center gap-4 mb-6">
-                                            <div className={`p-3 ${color} rounded-[1rem] shadow-sm border border-current`}><Icon size={24} /></div>
-                                            <div className="text-sm font-black text-text-muted uppercase tracking-wider">{label}</div>
-                                        </div>
-                                        <div className="text-4xl font-black text-text mb-2">{typeof value === 'number' ? value.toFixed(0) : 0}%</div>
-                                        {key === 'engagement_trend' && score.components?.engagement_slope !== undefined && (
-                                            <div className={`text-sm font-bold mt-1 ${score.components.engagement_slope >= 0 ? 'text-success' : 'text-danger'}`}>
-                                                {score.components.engagement_slope >= 0 ? 'Improving' : 'Declining'} ({score.components.engagement_slope > 0 ? '+' : ''}{score.components.engagement_slope.toFixed(2)}/session)
-                                            </div>
-                                        )}
-                                        <div className="w-full bg-surface-elevated rounded-full h-3 mt-auto pt-4 relative shadow-inner">
-                                            <div className="absolute top-4 left-0 bg-text h-3 rounded-full transition-all duration-1000" style={{ width: `${Math.min(value || 0, 100)}%` }} />
-                                        </div>
-                                    </div>
-                                );
-                            }).filter(Boolean);
-                        })()}
-                    </div>
-
-                    {/* Low engagement & ICAP distribution highlights */}
-                    {(score.components?.low_engagement_rate !== undefined || score.components?.icap_distribution) && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-                            {score.components?.low_engagement_rate !== undefined && (
-                                <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10">
-                                    <h4 className="text-sm font-black text-text-muted uppercase tracking-widest mb-6 border-l-4 border-danger pl-4">Low Engagement Alert</h4>
-                                    <div className="flex items-baseline gap-4 bg-surface-alt p-6 rounded-[1.5rem] border border-border">
-                                        <span className={`text-6xl font-black ${score.components.low_engagement_rate > 30 ? 'text-danger' : score.components.low_engagement_rate > 15 ? 'text-warning' : 'text-success'}`}>
-                                            {score.components.low_engagement_rate.toFixed(0)}%
+        return (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                {score ? (
+                    <>
+                        {/* 1. HERO SECTION */}
+                        <div className={`rounded-[2.5rem] p-10 md:p-14 mb-10 border shadow-sm relative overflow-hidden flex flex-col md:flex-row items-center gap-10 ${scoreBg}`}>
+                            <div className="absolute -right-20 -top-20 opacity-5 pointer-events-none">
+                                <Award size={400} />
+                            </div>
+                            <div className="flex-shrink-0 text-center relative z-10 bg-surface/80 backdrop-blur-md p-10 rounded-[2.5rem] border border-surface-alt shadow-sm min-w-[280px]">
+                                <div className={`text-8xl md:text-9xl font-black tracking-tighter mb-2 ${scoreColor}`}>
+                                    {overall.toFixed(1)}
+                                </div>
+                                <div className="text-text-secondary font-black uppercase tracking-widest text-sm mb-4">Teaching Score</div>
+                                <div className={`inline-block px-5 py-2 rounded-full text-sm font-black uppercase tracking-widest border shadow-inner ${scoreColor} border-current/20 bg-surface`}>
+                                    {scoreLabel}
+                                </div>
+                            </div>
+                            <div className="flex-1 relative z-10 text-center md:text-left">
+                                <h2 className="text-3xl md:text-4xl font-black text-text tracking-tight mb-4 flex items-center justify-center md:justify-start gap-4">
+                                    <Sparkles className="text-accent" size={32} /> AI Insight
+                                </h2>
+                                <p className="text-xl text-text-secondary font-medium leading-relaxed max-w-2xl mb-8">
+                                    {primaryRec}
+                                </p>
+                                <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+                                    <span className="bg-surface/80 backdrop-blur-sm px-6 py-3 rounded-[1.5rem] border border-border shadow-sm text-sm font-black text-text-muted flex items-center gap-2">
+                                        <Users size={16} /> <span className="text-text">{score.num_students}</span> Enrolled
+                                    </span>
+                                    <span className="bg-surface/80 backdrop-blur-sm px-6 py-3 rounded-[1.5rem] border border-border shadow-sm text-sm font-black text-text-muted flex items-center gap-2">
+                                        <Play size={16} /> <span className="text-text">{score.num_lectures}</span> Lectures
+                                    </span>
+                                    {score.total_sessions > 0 && (
+                                        <span className="bg-surface/80 backdrop-blur-sm px-6 py-3 rounded-[1.5rem] border border-border shadow-sm text-sm font-black text-text-muted flex items-center gap-2">
+                                            <Activity size={16} /> <span className="text-text">{score.total_sessions}</span> Sessions
                                         </span>
-                                        <span className="text-text-secondary font-bold text-lg">of sessions sub-40% engagement</span>
-                                    </div>
+                                    )}
                                 </div>
-                            )}
-                            {score.components?.icap_distribution && (
-                                <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 flex flex-col justify-between">
-                                    <h4 className="text-sm font-black text-text-muted uppercase tracking-widest mb-6 border-l-4 border-accent pl-4">ICAP Distribution</h4>
-                                    <div className="flex gap-4 items-end h-[100px] bg-surface-alt p-6 rounded-[1.5rem] border border-border">
-                                        {['interactive', 'constructive', 'active', 'passive'].map((level) => {
-                                            const count = score.components.icap_distribution[level] || 0;
-                                            const total = Object.values(score.components.icap_distribution).reduce((a, b) => a + b, 0) || 1;
-                                            const pct = (count / total) * 100;
-                                            const colors = { interactive: 'bg-success', constructive: 'bg-info', active: 'bg-warning', passive: 'bg-text-muted' };
-                                            return (
-                                                <div key={level} className="flex-1 flex flex-col items-center justify-end h-full gap-2">
-                                                    <div className="text-sm font-black text-text">{pct.toFixed(0)}%</div>
-                                                    <div className={`w-full rounded-md ${colors[level]} transition-all duration-700 shadow-sm`} style={{ height: `${Math.max(pct * 0.7, 8)}px` }} />
-                                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest leading-none">{level.slice(0, 3)}</div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
+                            </div>
                         </div>
-                    )}
 
-                    {/* Multi-Dimensional Engagement Insights (v3) */}
-                    {score.multi_dimensional && (
-                        <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 mb-10">
-                            <h4 className="text-xl font-black text-text tracking-tight mb-8 flex items-center gap-3">
-                                Multi-Dimensional Analysis
-                                <span className="ml-2 text-[10px] bg-accent text-surface shadow-sm px-3 py-1 rounded-lg font-black tracking-widest uppercase">v3 Model</span>
-                            </h4>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                                {[
-                                    { label: 'Boredom', value: score.multi_dimensional.boredom_avg, icon: '😴', color: 'warning-light', inverted: true },
-                                    { label: 'Confusion', value: score.multi_dimensional.confusion_avg, icon: '🤔', color: 'warning-light', inverted: true },
-                                    { label: 'Frustration', value: score.multi_dimensional.frustration_avg, icon: '😤', color: 'danger-light', inverted: true },
-                                    { label: 'Consistency', value: score.multi_dimensional.engagement_consistency, icon: '📊', color: 'success-light', inverted: false },
-                                ].map(({ label, value, icon, color, inverted }) => {
-                                    if (value == null) return null;
-                                    const isGood = inverted ? value < 30 : value > 70;
-                                    const isBad = inverted ? value > 50 : value < 40;
-                                    const statusColor = isGood ? 'text-success' : isBad ? 'text-danger' : 'text-warning';
+                        {/* 2. CORE METRICS */}
+                        <h3 className="text-2xl font-black text-text mb-6 flex items-center gap-3"><Target className="text-accent" /> Core Metrics</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                            {(() => {
+                                const coreCards = [
+                                    { key: 'engagement', label: 'Engagement', icon: Activity, color: 'text-accent bg-accent-light border-accent/20' },
+                                    { key: 'quiz_performance', label: 'Quiz Score', icon: BarChart3, color: 'text-success bg-success-light border-success/20' },
+                                    { key: 'icap_score', label: 'ICAP Depth', icon: Brain, color: 'text-warning bg-warning-light border-warning/20' },
+                                    { key: 'attendance', label: 'Attendance', icon: Users, color: 'text-primary bg-primary-light border-primary/20' },
+                                ];
+                                return coreCards.map(({ key, label, icon: Icon, color }) => {
+                                    const value = score.components?.[key] || 0;
                                     return (
-                                        <div key={label} className={`bg-surface-elevated border border-border shadow-sm rounded-[1.5rem] p-6 text-center hover:border-text/20 transition-colors`}>
-                                            <div className="text-4xl mb-3">{icon}</div>
-                                            <div className={`text-4xl font-black mb-1 ${statusColor}`}>{value.toFixed(0)}%</div>
-                                            <div className="text-xs font-black text-text-secondary uppercase tracking-widest mb-1">{label}</div>
-                                            <div className="text-[10px] font-bold text-text-muted mt-2 px-3 py-1 bg-surface rounded-full inline-block border border-border">
-                                                {inverted ? (isGood ? 'Low — Good' : isBad ? 'High — Risk' : 'Moderate') : (isGood ? 'Consistent' : isBad ? 'Variable' : 'Moderate')}
+                                        <div key={key} className="bg-surface rounded-[2rem] shadow-sm border border-border p-8 flex flex-col hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                                            <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 transition-transform duration-700 pointer-events-none"><Icon size={140} /></div>
+                                            <div className="flex justify-between items-start mb-8 relative z-10">
+                                                <div className={`p-4 ${color} rounded-[1.2rem] shadow-sm border`}><Icon size={24} /></div>
+                                                {key === 'engagement' && score.components?.engagement_slope !== undefined && (
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border flex items-center gap-1 ${score.components.engagement_slope >= 0 ? 'bg-success-light text-success border-success/20' : 'bg-danger-light text-danger border-danger/20'}`}>
+                                                        {score.components.engagement_slope >= 0 ? <TrendingUp size={14}/> : <TrendingUp size={14} className="rotate-180"/>}
+                                                        {score.components.engagement_slope > 0 ? '+' : ''}{(score.components.engagement_slope || 0).toFixed(1)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-sm font-black text-text-muted uppercase tracking-widest mb-1 relative z-10">{label}</div>
+                                            <div className="text-5xl font-black text-text mb-8 tracking-tighter relative z-10">{value.toFixed(0)}%</div>
+                                            
+                                            <div className="w-full bg-surface-elevated rounded-full h-2 mt-auto relative shadow-inner overflow-hidden z-10">
+                                                <div className="absolute top-0 left-0 bg-text h-full rounded-full transition-all duration-1000" style={{ width: `${Math.min(value, 100)}%` }} />
                                             </div>
                                         </div>
                                     );
-                                }).filter(Boolean)}
-                            </div>
+                                });
+                            })()}
                         </div>
-                    )}
 
-                    {/* SHAP Breakdown & Recs */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 mb-10">
-                        <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10">
-                            <h3 className="text-2xl font-black text-text mb-8 flex items-center gap-4 border-b border-border pb-6"><Sparkles className="text-warning" size={32} /> SHAP Score Breakdown</h3>
-                            <div className="space-y-5">
-                                {Object.entries(score.shap_breakdown || {}).sort((a, b) => b[1] - a[1]).map(([key, value]) => {
-                                    const labels = {
-                                        engagement: 'Live Engagement',
-                                        engagement_trend: 'Engagement Trend',
-                                        low_engagement_penalty: 'Low Eng. Penalty',
-                                        quiz_performance: 'Quiz History',
-                                        icap_distribution: 'ICAP Depth Analysis',
-                                        attendance: 'Attendance',
-                                        feedback_sentiment: 'Feedback',
-                                        completion_rate: 'Completion Rate',
-                                    };
-                                    return (
-                                        <div key={key} className="flex justify-between items-center bg-surface-alt p-5 rounded-[1.5rem] border border-border">
-                                            <span className="text-text-secondary font-black tracking-wide text-sm">{labels[key] || key.replace(/_/g, ' ').toUpperCase()}</span>
-                                            <span className={`px-4 py-2 rounded-xl text-base font-black shadow-sm tracking-tighter ${value > 0 ? 'bg-success-light text-success border border-success/20' : 'bg-surface-elevated text-text-muted border border-border'}`}>
-                                                +{value?.toFixed(1)}
-                                            </span>
+                        {/* 3. VISUAL ANALYTICS & SECONDARY METRICS ROW */}
+                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
+                            {/* ICAP Distribution */}
+                            <div className="xl:col-span-1 bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 flex flex-col">
+                                <h3 className="text-xl font-black text-text mb-8 border-l-4 border-warning pl-4 flex items-center justify-between">
+                                    <span>ICAP Distribution</span>
+                                </h3>
+                                <div className="flex-1 flex gap-4 items-end bg-surface-alt p-6 rounded-[1.5rem] border border-border min-h-[220px]">
+                                    {['interactive', 'constructive', 'active', 'passive'].map((level) => {
+                                        const count = score.components?.icap_distribution?.[level] || 0;
+                                        const total = Object.values(score.components?.icap_distribution || {}).reduce((a, b) => a + b, 0) || 1;
+                                        const pct = (count / total) * 100;
+                                        const colors = { interactive: 'bg-success', constructive: 'bg-info', active: 'bg-warning', passive: 'bg-text-muted' };
+                                        return (
+                                            <div key={level} className="flex-1 flex flex-col items-center justify-end h-full gap-3 group">
+                                                <div className="text-sm font-black text-text opacity-0 group-hover:opacity-100 transition-opacity">{pct.toFixed(0)}%</div>
+                                                <div className={`w-full rounded-xl ${colors[level]} transition-all duration-700 shadow-sm relative`} style={{ height: `${Math.max(pct * 1.2, 12)}px` }}>
+                                                    <div className="absolute mb-2 bottom-full left-1/2 -translate-x-1/2 bg-text text-surface text-[10px] uppercase tracking-widest px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity font-bold whitespace-nowrap z-20">
+                                                        {count} Sessions
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest leading-none mt-1">{level.slice(0, 3)}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Secondary Metrics */}
+                            <div className="xl:col-span-2 bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 flex flex-col">
+                                <div className="flex items-center justify-between mb-8 border-b border-border pb-6">
+                                    <h3 className="text-xl font-black text-text flex items-center gap-3"><Clock className="text-text-muted" size={24} /> Deep Dive Analytics</h3>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 flex-1">
+                                    <div className="bg-surface-alt rounded-[1.5rem] p-6 border border-border flex flex-col items-center justify-center text-center hover:border-text/20 transition-colors">
+                                        <div className="text-4xl font-black text-text mb-2 tracking-tighter">{(score.components?.teacher_responsiveness || 0).toFixed(0)}%</div>
+                                        <div className="text-[10px] uppercase tracking-widest font-black text-text-muted mb-3">Responsiveness</div>
+                                        <div className="text-xs text-text-secondary font-bold bg-surface shadow-sm rounded-full px-4 py-1.5 border border-border">
+                                            {score.components?.teacher_messages || 0} Msgs Sent
                                         </div>
-                                    );
-                                })}
+                                    </div>
+                                    <div className="bg-surface-alt rounded-[1.5rem] p-6 border border-border flex flex-col items-center justify-center text-center hover:border-text/20 transition-colors">
+                                        <div className="text-4xl font-black text-text mb-2 tracking-tighter">{(score.components?.feedback || 0).toFixed(0)}%</div>
+                                        <div className="text-[10px] uppercase tracking-widest font-black text-text-muted mb-3">Student Feedback</div>
+                                        <div className="text-xs text-text-secondary font-bold bg-surface shadow-sm rounded-full px-4 py-1.5 border border-border">Satisfaction</div>
+                                    </div>
+                                    <div className="bg-surface-alt rounded-[1.5rem] p-6 border border-border flex flex-col items-center justify-center text-center hover:border-text/20 transition-colors">
+                                        <div className="text-4xl font-black text-text mb-2 tracking-tighter">{(score.components?.completion_rate || 0).toFixed(0)}%</div>
+                                        <div className="text-[10px] uppercase tracking-widest font-black text-text-muted mb-3">Completion</div>
+                                        <div className="text-xs text-text-secondary font-bold bg-surface shadow-sm rounded-full px-4 py-1.5 border border-border">Rate</div>
+                                    </div>
+                                    <div className={`rounded-[1.5rem] p-6 border flex flex-col items-center justify-center text-center hover:brightness-95 transition-all ${score.components?.low_engagement_rate > 20 ? 'bg-danger-light border-danger/30 text-danger' : 'bg-success-light border-success/30 text-success'}`}>
+                                        <div className="text-4xl font-black mb-2 tracking-tighter">{(score.components?.low_engagement_rate || 0).toFixed(0)}%</div>
+                                        <div className="text-[10px] uppercase tracking-widest font-black opacity-80 mb-3">Low Eng. Alert</div>
+                                        <div className="text-xs font-bold bg-surface/50 rounded-full px-4 py-1.5 border border-black/5 shadow-inner">Sessions</div>
+                                    </div>
+                                </div>
+                                
+                                {score.multi_dimensional && (
+                                    <div className="mt-8 pt-8 border-t border-border grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {[
+                                            { l: 'Boredom', v: score.multi_dimensional.boredom_avg, i: '😴' },
+                                            { l: 'Confusion', v: score.multi_dimensional.confusion_avg, i: '🤔' },
+                                            { l: 'Frustration', v: score.multi_dimensional.frustration_avg, i: '😤' },
+                                            { l: 'Consistency', v: score.multi_dimensional.engagement_consistency, i: '📊' }
+                                        ].map(m => m.v != null && (
+                                            <div key={m.l} className="flex flex-col items-center gap-1.5 bg-surface-alt/50 p-4 rounded-2xl border border-transparent hover:border-border transition-colors">
+                                                <div className="text-2xl font-black text-text">{m.v.toFixed(0)}%</div>
+                                                <div className="text-[10px] uppercase tracking-widest font-black text-text-muted flex items-center gap-1.5 bg-surface px-3 py-1 rounded-md shadow-sm border border-border">{m.i} {m.l}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        <div className="bg-accent-light rounded-[2.5rem] shadow-sm border border-accent/20 p-10 relative overflow-hidden">
-                            <h3 className="text-2xl font-black text-accent mb-8 flex items-center gap-4"><Target size={32} /> AI Recommendations</h3>
-                            {(score.recommendations || []).length === 0 ? (
-                                <div className="text-text-secondary font-bold text-lg bg-surface/50 p-8 rounded-[1.5rem] text-center border border-accent/10">No recommendations. Excellent work!</div>
-                            ) : (
-                                <ul className="space-y-4 relative z-10">
-                                    {score.recommendations.map((r, i) => (
-                                        <li key={i} className="flex gap-5 text-lg font-bold text-text bg-surface/80 p-6 rounded-[1.5rem] shadow-sm border border-accent/20 hover:-translate-y-1 transition-transform">
-                                            <span className="text-accent mt-0.5 shrink-0"><Sparkles size={24} /></span> 
-                                            <span className="leading-snug">{r}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
+                        {/* 4. AI RECOMMENDATIONS & SHAP */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 mb-12">
+                            {/* Recommendations */}
+                            <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 flex flex-col">
+                                <h3 className="text-2xl font-black text-text mb-8 flex items-center gap-4 border-b border-border pb-6">
+                                    <Sparkles className="text-warning" size={28} /> Actionable Insights
+                                </h3>
+                                <div className="flex-1 space-y-5">
+                                    {score.recommendations && score.recommendations.length > 0 ? (
+                                        score.recommendations.map((rec, idx) => {
+                                            // Assign priority styling
+                                            let priorityClass = "bg-surface-alt border-border text-text";
+                                            let badge = "Observation";
+                                            let badgeClass = "bg-surface border-border text-text-muted";
+                                            
+                                            if (rec.toLowerCase().includes('low') || rec.toLowerCase().includes('declining') || rec.toLowerCase().includes('below') || rec.toLowerCase().includes('frustration')) {
+                                                priorityClass = "bg-danger-light border-danger/20 text-danger-dark border";
+                                                badge = "High Priority";
+                                                badgeClass = "bg-danger text-surface border-danger";
+                                            } else if (rec.toLowerCase().includes('improving') || rec.toLowerCase().includes('healthy') || rec.toLowerCase().includes('great') || rec.toLowerCase().includes('positive')) {
+                                                priorityClass = "bg-success-light border-success/20 text-success-dark border";
+                                                badge = "Positive";
+                                                badgeClass = "bg-success text-surface border-success";
+                                            } else {
+                                                priorityClass = "bg-warning-light border-warning/20 text-warning-dark border";
+                                                badge = "Insight";
+                                                badgeClass = "bg-warning text-surface border-warning";
+                                            }
+
+                                            return (
+                                                <div key={idx} className={`p-6 rounded-[1.5rem] flex flex-col gap-3 shadow-sm transition-transform hover:-translate-y-1 ${priorityClass}`}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className={`text-[10px] uppercase tracking-widest font-black border px-3 py-1 rounded-md shadow-sm ${badgeClass}`}>
+                                                            {badge}
+                                                        </span>
+                                                    </div>
+                                                    <p className="leading-relaxed font-bold text-sm md:text-base">{rec}</p>
+                                                </div>
+                                            )
+                                        })
+                                    ) : (
+                                        <div className="text-center p-12 text-text-muted font-bold bg-surface-alt rounded-[2rem] border border-border border-dashed h-full flex items-center justify-center">
+                                            No specific recommendations at this time.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* SHAP */}
+                            <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 flex flex-col">
+                                <h3 className="text-2xl font-black text-text mb-2 flex items-center gap-4">
+                                    <Activity size={28} className="text-accent" /> Score Contributors
+                                </h3>
+                                <p className="text-text-secondary text-sm font-semibold mb-8 border-b border-border pb-6">
+                                    Factors impacting your Overall Teaching Score (SHAP Values)
+                                </p>
+                                <div className="space-y-4 flex-1">
+                                    {Object.entries(score.shap_breakdown || {}).sort((a, b) => b[1] - a[1]).map(([key, value]) => {
+                                        const labels = {
+                                            engagement: 'Live Engagement', engagement_trend: 'Engagement Trend', low_engagement_penalty: 'Low Eng. Penalty',
+                                            quiz_performance: 'Quiz History', icap_distribution: 'ICAP Depth Analysis', attendance: 'Attendance',
+                                            feedback_sentiment: 'Feedback', completion_rate: 'Completion Rate', teacher_responsiveness: 'Instructor Comm.',
+                                            teacher_activity: 'Teacher Activity', engagement_consistency: 'Consistency'
+                                        };
+                                        const isPositive = value >= 0;
+                                        return (
+                                            <div key={key} className="relative bg-surface-alt p-5 rounded-[1.2rem] border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 group overflow-hidden">
+                                                <div className="absolute inset-0 bg-gradient-to-r from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                                <span className="text-text font-black tracking-wide text-sm relative z-10 flex-shrink-0 w-36">
+                                                    {labels[key] || key.replace(/_/g, ' ').toUpperCase()}
+                                                </span>
+                                                <div className="flex items-center gap-4 relative z-10 flex-1 justify-end">
+                                                    <div className={`w-full max-w-[160px] h-2.5 rounded-full overflow-hidden bg-surface shadow-inner ${isPositive ? 'ml-auto' : ''}`}>
+                                                        <div className={`h-full ${isPositive ? 'bg-success' : 'bg-danger'} rounded-full transition-all duration-1000`} style={{ width: `${Math.min(Math.abs(value) * 3, 100)}%`, marginLeft: isPositive ? 'auto' : '0' }}></div>
+                                                    </div>
+                                                    <span className={`w-12 text-right text-base font-black ${isPositive ? 'text-success' : 'text-danger'}`}>
+                                                        {isPositive ? '+' : ''}{value?.toFixed(1)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
+
+                        {/* 5. TEACHER ACTIVITY METRICS */}
+                        {score.teacher_activity && (
+                            <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 mb-12">
+                                <h3 className="text-2xl font-black text-text mb-8 flex items-center gap-4 border-b border-border pb-6">
+                                    <Award className="text-accent" size={28} /> Teacher Activity Summary
+                                </h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                    {[
+                                        { label: 'Total Activities', value: score.teacher_activity.total_activities, icon: '📋', unit: '' },
+                                        { label: 'Materials Uploaded', value: score.teacher_activity.materials_uploaded, icon: '📎', unit: '' },
+                                        { label: 'Messages Sent', value: score.teacher_activity.messages_sent, icon: '💬', unit: '' },
+                                        { label: 'Activity Score', value: score.teacher_activity.activity_score, icon: '⚡', unit: '%' },
+                                    ].map(m => (
+                                        <div key={m.label} className="flex flex-col items-center gap-2 bg-surface-alt p-6 rounded-2xl border border-border hover:border-accent/30 transition-colors">
+                                            <div className="text-3xl">{m.icon}</div>
+                                            <div className="text-3xl font-black text-text">{m.value}{m.unit}</div>
+                                            <div className="text-[10px] uppercase tracking-widest font-black text-text-muted">{m.label}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                    </>
+                ) : (
+                    /* 5. EMPTY STATE */
+                    <div className="bg-surface rounded-[3rem] shadow-sm border border-border p-16 md:p-24 text-center relative overflow-hidden my-10">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-accent/5 rounded-full blur-3xl pointer-events-none"></div>
+                        <div className="w-28 h-28 bg-surface-alt rounded-[2.5rem] mx-auto flex items-center justify-center border border-border mb-10 relative z-10 shadow-sm rotate-3 hover:rotate-6 transition-transform">
+                            <Activity className="text-accent" size={56} />
+                        </div>
+                        <h2 className="text-4xl md:text-5xl font-black text-text mb-6 tracking-tight relative z-10">No Analytics Data Yet</h2>
+                        <p className="text-text-secondary font-medium text-xl max-w-2xl mx-auto mb-12 relative z-10 leading-relaxed">
+                            There isn't enough student engagement data to generate a teaching score for this course. Ensure your students are viewing your lectures and engaging with quizzes.
+                        </p>
                     </div>
-                </>
-            ) : (
-                <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-16 text-center">
-                    <div className="w-20 h-20 bg-surface-alt rounded-3xl mx-auto flex items-center justify-center border border-border mb-6">
-                        <Activity className="text-text-muted" size={40} />
+                )}
+            {/* Students List for Course Drill-Down */}
+            {dashboard?.student_stats && (
+                <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border overflow-hidden mb-10 mt-10">
+                    <div className="px-10 py-8 border-b border-border bg-surface-alt flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                        <h3 className="text-2xl font-black text-text flex items-center gap-4"><Users size={28} className="text-accent" /> Course Students</h3>
+                        <span className="text-xs font-black bg-surface border border-border shadow-sm text-text-secondary px-5 py-2.5 rounded-full uppercase tracking-widest">Select to view Analytics</span>
                     </div>
-                    <div className="text-2xl font-black text-text mb-2">No Analytics Data Yet</div>
-                    <p className="text-text-secondary font-semibold text-lg max-w-lg mx-auto">There isn't enough student engagement data to generate a teaching score for this course. Ensure students view lectures and take quizzes.</p>
+                    <div className="p-0 overflow-x-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                            <thead className="bg-surface-elevated text-text-muted font-black border-b border-border text-xs uppercase tracking-widest">
+                                <tr>
+                                    <th className="px-10 py-6">Student</th>
+                                    <th className="px-10 py-6">ICAP State</th>
+                                    <th className="px-10 py-6">Avg Focus</th>
+                                    <th className="px-10 py-6">Quiz Avg</th>
+                                    <th className="px-10 py-6 w-[40%]">Activity Heatmap</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {dashboard.student_stats.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="5" className="p-16 text-center text-text-muted font-bold text-lg">No students found for this course.</td>
+                                    </tr>
+                                ) : (
+                                    dashboard.student_stats.map(s => {
+                                        return (
+                                            <tr key={s.student_id} className="hover:bg-surface-alt transition-colors cursor-pointer group" onClick={() => handleStudentClick(s)}>
+                                                <td className="px-10 py-6">
+                                                    <div className="font-bold text-lg text-text mb-1 group-hover:text-accent transition-colors">{s.name}</div>
+                                                    <div className="text-xs font-semibold text-text-secondary tracking-wide">{s.email}</div>
+                                                </td>
+                                                <td className="px-10 py-6">
+                                                    <span className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest border shadow-sm ${s.icap_level ? 'bg-accent-light text-accent border-accent/20' : 'bg-surface-elevated text-text-muted border-border'}`}>
+                                                        {s.icap_level || 'Passive'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-10 py-6">
+                                                    <div className={`font-black text-2xl tracking-tighter ${(s.engagement_score || 0) >= 80 ? 'text-success' : (s.engagement_score || 0) >= 50 ? 'text-warning' : 'text-danger'}`}>
+                                                        {(s.engagement_score || 0).toFixed(0)}%
+                                                    </div>
+                                                </td>
+                                                <td className="px-10 py-6">
+                                                    {s.quiz_score !== null ? (
+                                                        <span className="font-black text-xl text-text">{s.quiz_score.toFixed(0)}%</span>
+                                                    ) : (
+                                                        <span className="text-[10px] uppercase font-black tracking-widest text-text-muted bg-surface-elevated px-3 py-1.5 rounded-md border border-border shadow-inner">Missing</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-10 py-6 w-1/3">
+                                                    <EngagementHeatmap timeline={s.timeline || []} />
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
 
@@ -369,7 +540,8 @@ export default function TeachingDashboard() {
                 </div>
             </div>
         </div>
-    );
+        );
+    };
 
     const renderLectureView = () => (
         <div className="animate-in fade-in slide-in-from-right-4 duration-300">
@@ -457,19 +629,22 @@ export default function TeachingDashboard() {
 
     const renderStudentView = () => {
         if (!selectedStudent) return null;
-        const timelineData = lectureDashboard?.engagement_timelines.find(t => t.student_id === selectedStudent.student_id)?.timeline || [];
+        const timelineData = selectedLecture 
+            ? (lectureDashboard?.engagement_timelines.find(t => t.student_id === selectedStudent.student_id)?.timeline || [])
+            : (selectedStudent.timeline || []);
 
         return (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                 <button className="mb-8 flex items-center gap-3 text-sm font-black uppercase tracking-widest text-text-muted hover:text-accent transition-colors"
-                    onClick={() => setViewLevel('lecture')}>
-                    <ArrowLeft size={16} /> Back to {selectedLecture.title}
+                    onClick={() => setViewLevel(selectedLecture ? 'lecture' : 'course')}>
+                    <ArrowLeft size={16} /> {selectedLecture ? `Back to ${selectedLecture.title}` : 'Back to Course Overview'}
                 </button>
 
                 <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 md:p-12 mb-10 border-l-8 border-l-accent">
                     <div className="flex flex-col md:flex-row gap-8 md:items-center justify-between">
                         <div>
                             <div className="text-sm font-black text-accent uppercase tracking-widest mb-3">Student Deep Dive</div>
+
                             <h2 className="text-4xl font-black text-text leading-tight mb-2 tracking-tight">{selectedStudent.name}</h2>
                             <div className="text-text-secondary font-bold text-base">{selectedStudent.email}</div>
                         </div>
@@ -539,7 +714,7 @@ export default function TeachingDashboard() {
     };
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 border-b border-border pb-8">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight border-l-8 border-accent pl-6 py-1">Teaching Analytics</h1>

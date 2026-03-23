@@ -41,11 +41,11 @@ function StudentDashboard() {
     );
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="w-full mx-auto px-6 lg:px-12 py-16 animate-in fade-in">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
                 <div>
-                    <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3">My Dashboard</h1>
-                    <p className="text-text-secondary font-medium text-xl">Track your learning progress and achievements.</p>
+                    <h1 className="text-5xl md:text-6xl font-black text-text tracking-tight mb-4">My Dashboard</h1>
+                    <p className="text-text-secondary font-medium text-2xl">Track your learning progress and achievements.</p>
                 </div>
                 <button className="btn btn-primary btn-lg shadow-accent" onClick={() => navigate('/my-courses')}>
                     <BookOpen size={20} /> Browse Courses
@@ -53,57 +53,57 @@ function StudentDashboard() {
             </div>
 
             {/* Hero: Engagement Gauge + Stats */}
-            <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 mb-16">
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-10 mb-20">
                 {/* Engagement Ring */}
-                <div className="xl:col-span-2 bg-surface rounded-[2.5rem] p-10 shadow-sm border border-border flex flex-col items-center justify-center relative overflow-hidden group">
+                <div className="xl:col-span-2 bg-surface rounded-[3rem] p-12 shadow-sm border border-border flex flex-col items-center justify-center relative overflow-hidden group">
                     <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <EngagementGauge score={analytics?.engagement?.avg_score || 0} size={180} />
-                    <div className="mt-6 text-sm font-black text-text-muted uppercase tracking-widest">Global Engagement Score</div>
+                    <EngagementGauge score={analytics?.engagement?.avg_score || 0} size={220} />
+                    <div className="mt-8 text-base font-black text-text-muted uppercase tracking-widest">Global Engagement Score</div>
                     {analytics?.icap_distribution && Object.keys(analytics.icap_distribution).length > 0 && (
-                        <div className="mt-8 w-full max-w-sm">
+                        <div className="mt-10 w-full max-w-sm">
                             <ICAPProgressBar distribution={analytics.icap_distribution} />
                         </div>
                     )}
                 </div>
 
                 {/* Stat cards */}
-                <div className="xl:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-8">
-                    <div className="bg-surface rounded-3xl p-8 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-1 transition-transform">
+                <div className="xl:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-10">
+                    <div className="bg-surface rounded-[2.5rem] p-10 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-2 transition-transform">
                         <div className="w-14 h-14 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-6">
                             <BookOpen size={28} />
                         </div>
                         <div className="text-4xl font-black text-text mb-2 tracking-tight">{courses.length}</div>
                         <div className="text-sm font-black text-text-muted uppercase tracking-widest">Enrolled Courses</div>
                     </div>
-                    <div className="bg-surface rounded-3xl p-8 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-1 transition-transform">
-                        <div className="w-14 h-14 rounded-2xl bg-warning-light text-warning flex items-center justify-center mb-6">
-                            <BarChart3 size={28} />
+                    <div className="bg-surface rounded-[2.5rem] p-10 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-2 transition-transform">
+                        <div className="w-16 h-16 rounded-2xl bg-warning-light text-warning flex items-center justify-center mb-8">
+                            <BarChart3 size={32} />
                         </div>
-                        <div className="text-4xl font-black text-text mb-2 tracking-tight">{analytics?.quizzes?.avg_score?.toFixed(0) || 0}%</div>
-                        <div className="text-sm font-black text-text-muted uppercase tracking-widest">Avg Quiz Score</div>
+                        <div className="text-5xl font-black text-text mb-3 tracking-tight">{analytics?.quizzes?.avg_score?.toFixed(0) || 0}%</div>
+                        <div className="text-base font-black text-text-muted uppercase tracking-widest">Avg Quiz Score</div>
                     </div>
-                    <div className="bg-surface rounded-3xl p-8 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-1 transition-transform">
-                        <div className="w-14 h-14 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-6">
-                            <Award size={28} />
+                    <div className="bg-surface rounded-[2.5rem] p-10 shadow-sm border border-border flex flex-col justify-center hover:-translate-y-2 transition-transform">
+                        <div className="w-16 h-16 rounded-2xl bg-accent-light text-accent flex items-center justify-center mb-8">
+                            <Award size={32} />
                         </div>
-                        <div className="text-4xl font-black text-text mb-2 tracking-tight">{analytics?.engagement?.total_sessions || 0}</div>
-                        <div className="text-sm font-black text-text-muted uppercase tracking-widest">Total Sessions</div>
+                        <div className="text-5xl font-black text-text mb-3 tracking-tight">{analytics?.engagement?.total_sessions || 0}</div>
+                        <div className="text-base font-black text-text-muted uppercase tracking-widest">Total Sessions</div>
                     </div>
-                    <div className="bg-gradient-to-br from-accent/10 to-violet-500/10 rounded-3xl p-8 shadow-sm border border-accent/20 hover:border-accent hover:shadow-md cursor-pointer transition-all hover:-translate-y-1 flex flex-col justify-center"
+                    <div className="bg-gradient-to-br from-accent/10 to-violet-500/10 rounded-[2.5rem] p-10 shadow-sm border border-accent/20 hover:border-accent hover:shadow-lg cursor-pointer transition-all hover:-translate-y-2 flex flex-col justify-center"
                         onClick={() => navigate('/my-analytics')}>
-                        <div className="w-14 h-14 rounded-2xl bg-accent text-white flex items-center justify-center mb-6 shadow-md shadow-accent/40">
-                            <Brain size={28} />
+                        <div className="w-16 h-16 rounded-2xl bg-accent text-white flex items-center justify-center mb-8 shadow-lg shadow-accent/40">
+                            <Brain size={32} />
                         </div>
-                        <div className="text-2xl font-black text-accent mb-2 tracking-tight">Full Analytics</div>
-                        <div className="text-sm font-black text-accent/70 uppercase tracking-widest">SHAP + ICAP insights &rarr;</div>
+                        <div className="text-3xl font-black text-accent mb-3 tracking-tight">Full Analytics</div>
+                        <div className="text-base font-black text-accent/70 uppercase tracking-widest">SHAP + ICAP insights &rarr;</div>
                     </div>
                 </div>
             </div>
 
             {/* My Courses */}
-            <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-3xl font-black text-text tracking-tight">Continue Learning</h2>
-              <div className="h-1 flex-1 bg-border rounded-full hidden sm:block"></div>
+            <div className="flex items-center gap-6 mb-10">
+              <h2 className="text-4xl font-black text-text tracking-tight">Continue Learning</h2>
+              <div className="h-1.5 flex-1 bg-border rounded-full hidden sm:block"></div>
             </div>
             
             {courses.length === 0 ? (
@@ -118,7 +118,7 @@ function StudentDashboard() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10">
                     {courses.map(course => (
                         <div key={course.course_id} className="course-card" onClick={() => navigate(`/courses/${course.course_id}`)}>
                             <div className="course-card-img">
@@ -156,8 +156,15 @@ function TeacherDashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        coursesAPI.list().then(res => setCourses(res.data || []))
-            .catch(() => { }).finally(() => setLoading(false));
+        let isMounted = true;
+        coursesAPI.list().then(res => {
+            if (isMounted) setCourses(res.data || []);
+        }).catch(err => {
+            console.error("Failed to fetch courses (Dashboard):", err);
+        }).finally(() => {
+            if (isMounted) setLoading(false);
+        });
+        return () => { isMounted = false; };
     }, []);
 
     if (loading) return (
@@ -167,11 +174,11 @@ function TeacherDashboard() {
     );
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="w-full mx-auto px-6 lg:px-12 py-16 animate-in fade-in">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
                 <div>
-                    <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3">Teacher Dashboard</h1>
-                    <p className="text-text-secondary font-medium text-xl">Manage your content and view student engagement.</p>
+                    <h1 className="text-5xl md:text-6xl font-black text-text tracking-tight mb-4">Teacher Dashboard</h1>
+                    <p className="text-text-secondary font-medium text-2xl">Manage your content and view student engagement.</p>
                 </div>
                 <button className="btn btn-primary btn-lg shadow-accent" onClick={() => navigate('/manage-courses')}>
                     <PlusCircle size={20} /> Manage Courses
@@ -209,9 +216,9 @@ function TeacherDashboard() {
                 </div>
             </div>
 
-            <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-3xl font-black text-text tracking-tight">Your Courses</h2>
-              <div className="h-1 flex-1 bg-border rounded-full hidden sm:block"></div>
+            <div className="flex items-center gap-6 mb-10">
+              <h2 className="text-4xl font-black text-text tracking-tight">Your Courses</h2>
+              <div className="h-1.5 flex-1 bg-border rounded-full hidden sm:block"></div>
             </div>
 
             {courses.length === 0 ? (
@@ -273,7 +280,7 @@ function AdminDashboard() {
     );
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3">Admin Dashboard</h1>

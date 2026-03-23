@@ -15,19 +15,37 @@ function formatTime(seconds) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function EngagementHeatmap({ lectureId, height = 48 }) {
+export function EngagementHeatmap({ lectureId, height = 48, scope = 'lecture', autoRefreshMs = 12000 }) {
     const [heatmapData, setHeatmapData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [hoveredSegment, setHoveredSegment] = useState(null);
 
     useEffect(() => {
         if (!lectureId) return;
-        setLoading(true);
-        engagementAPI.getHeatmap(lectureId)
-            .then(res => setHeatmapData(res.data))
-            .catch(() => { })
-            .finally(() => setLoading(false));
-    }, [lectureId]);
+        let isMounted = true;
+
+        const load = async (isInitial = false) => {
+            if (isInitial) setLoading(true);
+            try {
+                const res = scope === 'student'
+                    ? await engagementAPI.getMyHeatmap(lectureId)
+                    : await engagementAPI.getHeatmap(lectureId);
+                if (isMounted) setHeatmapData(res.data);
+            } catch {
+                if (isMounted) setHeatmapData(null);
+            } finally {
+                if (isMounted && isInitial) setLoading(false);
+            }
+        };
+
+        load(true);
+        const timer = setInterval(() => load(false), Math.max(autoRefreshMs, 5000));
+
+        return () => {
+            isMounted = false;
+            clearInterval(timer);
+        };
+    }, [lectureId, scope, autoRefreshMs]);
 
     if (loading) return <div className="w-full h-12 bg-surface-elevated rounded-xl skeleton" />;
     if (!heatmapData?.segments?.length) return <div className="text-center py-4 text-text-muted text-xs font-medium">No engagement heatmap data yet</div>;

@@ -513,3 +513,33 @@ class Message(Base):
         Index("idx_message_course", "course_id"),
         Index("idx_message_created", "created_at"),
     )
+
+
+# ─── AI Tutor ────────────────────────────────────────────
+
+class AITutorSession(Base):
+    __tablename__ = "ai_tutor_sessions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    student_id = Column(String, ForeignKey("users.id"), nullable=False)
+    title = Column(String(300), nullable=False, default="New Chat")
+    mode = Column(String(50), nullable=False, default="general")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    student = relationship("User")
+    messages = relationship("AITutorMessage", back_populates="session", cascade="all, delete-orphan", order_by="AITutorMessage.created_at")
+
+
+class AITutorMessage(Base):
+    __tablename__ = "ai_tutor_messages"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    session_id = Column(String, ForeignKey("ai_tutor_sessions.id"), nullable=False)
+    role = Column(String(50), nullable=False) # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    session = relationship("AITutorSession", back_populates="messages")

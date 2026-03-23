@@ -31,7 +31,7 @@ export default function TeacherOverview() {
     );
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
             <div className="mb-12">
                 <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3 border-l-8 border-accent pl-6 py-2">Teacher Overview</h1>
                 <p className="text-xl text-text-secondary font-medium ml-6">Analyze teacher performance and manage faculty details.</p>

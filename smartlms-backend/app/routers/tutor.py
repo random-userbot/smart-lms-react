@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Optional
 import json
 import asyncio
+from groq import AsyncGroq
 
-from app.database import get_db
-from app.models.models import User
+from app.database import get_db, async_session
+from app.models.models import User, AITutorSession, AITutorMessage, Lecture, EngagementLog, QuizAttempt, ICAPLog
 from app.middleware.auth import get_current_user
 from app.config import settings
 from app.services.debug_logger import debug_logger
+from sqlalchemy import select, func, desc
 
 router = APIRouter(prefix="/api/tutor", tags=["AI Tutor"])
 
@@ -28,12 +30,77 @@ class TutorChatRequest(BaseModel):
     mode: str = "general" # general, language_practice, grammar_check
     target_language: Optional[str] = None # e.g. "Spanish"
     lecture_id: Optional[str] = None # Context-aware tutoring
+    session_id: Optional[str] = None # To append to existing DB session
 
 SYSTEM_PROMPTS = {
     "general": "You are a friendly, encouraging, and highly knowledgeable AI Tutor for the Smart LMS. Explain concepts clearly using the socratic method when appropriate.",
     "language_practice": "You are a native-speaking language exchange partner. The user wants to practice {target_language}. Keep responses conversational, natural, and relatively brief to mimic real chat. Gently correct major errors without breaking the flow.",
     "grammar_check": "You are a strict but helpful grammar teacher for {target_language}. Analyze the user's latest message, point out any grammar/spelling errors, explain why they are wrong, and provide the correct version.",
 }
+
+@router.get("/sessions")
+async def get_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all tutoring sessions for the user"""
+    result = await db.execute(
+        select(AITutorSession)
+        .where(AITutorSession.student_id == current_user.id)
+        .order_by(desc(AITutorSession.updated_at))
+    )
+    return result.scalars().all()
+
+@router.post("/sessions")
+async def create_session(
+    title: str = "New Session",
+    mode: str = "general",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new tutoring session"""
+    session = AITutorSession(student_id=current_user.id, title=title, mode=mode)
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get messages for a specific session"""
+    result = await db.execute(
+        select(AITutorSession).where(AITutorSession.id == session_id, AITutorSession.student_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    messages = await db.execute(
+        select(AITutorMessage)
+        .where(AITutorMessage.session_id == session_id)
+        .order_by(AITutorMessage.created_at.asc())
+    )
+    return messages.scalars().all()
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a specific session"""
+    result = await db.execute(
+        select(AITutorSession).where(AITutorSession.id == session_id, AITutorSession.student_id == current_user.id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await db.delete(session)
+    await db.commit()
+    return {"message": "Session deleted"}
 
 @router.post("/chat")
 async def chat_with_tutor(
@@ -46,10 +113,6 @@ async def chat_with_tutor(
         raise HTTPException(status_code=500, detail="Groq API key not configured")
 
     try:
-        from groq import AsyncGroq
-        from sqlalchemy import select
-        from app.models.models import Lecture
-        
         client = AsyncGroq(api_key=settings.GROQ_API_KEY)
         
         # Determine system prompt
@@ -57,8 +120,6 @@ async def chat_with_tutor(
         sys_prompt = sys_prompt_template.replace("{target_language}", request.target_language or "the language")
         
         # Deep Context: Fetch Student History
-        from app.models.models import EngagementLog, QuizAttempt, ICAPLog
-        from sqlalchemy import func
         
         # Get avg engagement
         avg_eng_res = await db.execute(select(func.avg(EngagementLog.engagement_score)).where(EngagementLog.student_id == current_user.id))
@@ -85,17 +146,32 @@ async def chat_with_tutor(
         # Intelligent Model Routing based on use case
         model_name = "llama-3.3-70b-versatile" # Default robust model
         if request.mode == "general":
-            model_name = "qwen-2.5-32b" # Known for deep reasoning
+            model_name = "llama-3.3-70b-versatile" 
         elif request.mode == "language_practice":
-            model_name = "mixtral-8x7b-32768" # Fast, good multilingual
-        # Note: adjust names based on exact Groq availability, substituting the user's requested Qwen/Kimi as available standard IDs
+            model_name = "mixtral-8x7b-32768" 
+        elif request.mode == "grammar_check":
+            model_name = "gemma2-9b-it" 
 
         
         messages = [{"role": "system", "content": sys_prompt}]
         for msg in request.messages[-10:]: # Keep last 10 messages for context window
             messages.append({"role": msg.role, "content": msg.content})
 
+        # Pre-save the user message to DB if session exists
+        if request.session_id and request.messages:
+            user_msg = request.messages[-1]
+            if user_msg.role == "user":
+                db_msg = AITutorMessage(session_id=request.session_id, role="user", content=user_msg.content)
+                db.add(db_msg)
+                # optionally update session title if it's new
+                session_res = await db.execute(select(AITutorSession).where(AITutorSession.id == request.session_id))
+                session = session_res.scalar_one_or_none()
+                if session and session.title == "New Session" and len(request.messages) <= 2:
+                    session.title = user_msg.content[:50] + "..." if len(user_msg.content) > 50 else user_msg.content
+                await db.commit()
+
         async def generate_response():
+            full_content = ""
             try:
                 stream = await client.chat.completions.create(
                     model=model_name,
@@ -106,10 +182,25 @@ async def chat_with_tutor(
                 )
                 async for chunk in stream:
                     if chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                        content = chunk.choices[0].delta.content
+                        full_content += content
+                        yield content
             except Exception as e:
                 debug_logger.log("error", f"Tutor streaming error: {str(e)}")
                 yield f"\n\n[Error communicating with AI Tutor: {str(e)}]"
+            finally:
+                if request.session_id and full_content:
+                    async with async_session() as db_session:
+                        msg = AITutorMessage(session_id=request.session_id, role="assistant", content=full_content)
+                        db_session.add(msg)
+                        
+                        # Update session updated_at timestamp
+                        session_res = await db_session.execute(select(AITutorSession).where(AITutorSession.id == request.session_id))
+                        session = session_res.scalar_one_or_none()
+                        if session:
+                            session.updated_at = func.now()
+                            
+                        await db_session.commit()
 
         debug_logger.log("activity", f"AI Tutor chat ({request.mode}) initiated", user_id=current_user.id)
         

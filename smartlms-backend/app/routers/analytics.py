@@ -175,32 +175,72 @@ async def get_teaching_score(
     else:
         responsiveness_score = 15.0  # No messages = low responsiveness
 
-    # ── Overall weighted score (v3) ──
-    # Updated weights: engagement(20%) + trend(12%) + low_eng(8%) + quiz(13%) + 
-    # icap(13%) + feedback(10%) + completion(9%) + responsiveness(8%) + attendance(7%)
+    # ── 10. Teacher Activity Score (logins, materials, activity) ──
+    # Count activity log entries for this teacher
+    activity_result = await db.execute(
+        select(func.count(ActivityLog.id)).where(
+            ActivityLog.user_id == course.teacher_id
+        )
+    )
+    teacher_activity_count = activity_result.scalar() or 0
+    
+    # Count materials added for lectures in this course
+    from app.models.models import Material
+    try:
+        mat_result = await db.execute(
+            select(func.count()).select_from(Material).where(
+                Material.lecture_id.in_(
+                    select(Lecture.id).where(Lecture.course_id == course_id)
+                )
+            )
+        )
+        materials_count = mat_result.scalar() or 0
+    except Exception:
+        materials_count = 0
+    
+    # Activity score: combined from activity logs + materials
+    # More active teachers get higher scores
+    if teacher_activity_count >= 20 and materials_count >= 5:
+        teacher_activity_score = 100.0
+    elif teacher_activity_count >= 10 or materials_count >= 3:
+        teacher_activity_score = 75.0
+    elif teacher_activity_count >= 5 or materials_count >= 1:
+        teacher_activity_score = 50.0
+    elif teacher_activity_count > 0:
+        teacher_activity_score = 30.0
+    else:
+        teacher_activity_score = 10.0
+
+    # ── Overall weighted score (v4) ──
+    # Updated weights: engagement(18%) + trend(10%) + low_eng(7%) + quiz(12%) + 
+    # icap(12%) + feedback(9%) + completion(8%) + responsiveness(7%) + attendance(7%) + activity(5%) + consistency(5%)
     overall = (
-        engagement_avg * 0.20 +
-        trend_score * 0.12 +
-        low_eng_score * 0.08 +
-        quiz_avg * 0.13 +
-        icap_score * 0.13 +
-        feedback_score * 0.10 +
-        completion_rate * 0.09 +
-        responsiveness_score * 0.08 +
-        attendance_avg * 0.07
+        engagement_avg * 0.18 +
+        trend_score * 0.10 +
+        low_eng_score * 0.07 +
+        quiz_avg * 0.12 +
+        icap_score * 0.12 +
+        feedback_score * 0.09 +
+        completion_rate * 0.08 +
+        responsiveness_score * 0.07 +
+        attendance_avg * 0.07 +
+        teacher_activity_score * 0.05 +
+        consistency_score * 0.05
     )
 
     # SHAP-style breakdown
     shap_breakdown = {
-        "engagement": round(engagement_avg * 0.20, 1),
-        "engagement_trend": round(trend_score * 0.12, 1),
-        "low_engagement_penalty": round(low_eng_score * 0.08, 1),
-        "quiz_performance": round(quiz_avg * 0.13, 1),
-        "icap_distribution": round(icap_score * 0.13, 1),
-        "feedback_sentiment": round(feedback_score * 0.10, 1),
-        "completion_rate": round(completion_rate * 0.09, 1),
-        "teacher_responsiveness": round(responsiveness_score * 0.08, 1),
+        "engagement": round(engagement_avg * 0.18, 1),
+        "engagement_trend": round(trend_score * 0.10, 1),
+        "low_engagement_penalty": round(low_eng_score * 0.07, 1),
+        "quiz_performance": round(quiz_avg * 0.12, 1),
+        "icap_distribution": round(icap_score * 0.12, 1),
+        "feedback_sentiment": round(feedback_score * 0.09, 1),
+        "completion_rate": round(completion_rate * 0.08, 1),
+        "teacher_responsiveness": round(responsiveness_score * 0.07, 1),
         "attendance": round(attendance_avg * 0.07, 1),
+        "teacher_activity": round(teacher_activity_score * 0.05, 1),
+        "engagement_consistency": round(consistency_score * 0.05, 1),
     }
 
     # Recommendations
@@ -318,7 +358,13 @@ async def get_teaching_score(
             "engagement_consistency": round(consistency_score, 1),
             "engagement_std": round(eng_std, 1) if eng_std else 0.0,
         },
-        "version": "v3",
+        "teacher_activity": {
+            "total_activities": teacher_activity_count,
+            "materials_uploaded": materials_count,
+            "messages_sent": teacher_messages,
+            "activity_score": round(teacher_activity_score, 1),
+        },
+        "version": "v4",
         "calculated_at": datetime.utcnow().isoformat(),
     }
 
@@ -336,7 +382,7 @@ async def get_course_dashboard(
             EngagementLog.lecture_id.in_(
                 select(Lecture.id).where(Lecture.course_id == course_id)
             )
-        ).order_by(EngagementLog.started_at.desc()).limit(100)
+        ).order_by(EngagementLog.started_at.desc())
     )
     engagement_logs = eng_result.scalars().all()
 
@@ -356,7 +402,7 @@ async def get_course_dashboard(
             Quiz.lecture_id.in_(
                 select(Lecture.id).where(Lecture.course_id == course_id)
             )
-        ).order_by(QuizAttempt.completed_at.desc()).limit(50)
+        ).order_by(QuizAttempt.completed_at.desc())
     )
     quiz_attempts = quiz_result.scalars().all()
 
@@ -375,6 +421,78 @@ async def get_course_dashboard(
         ).order_by(ActivityLog.created_at.desc()).limit(50)
     )
     download_logs = download_result.scalars().all()
+
+    # Aggregate student stats
+    students_in_logs = list(set([log.student_id for log in engagement_logs]))
+    students_dict = {}
+    if students_in_logs:
+        student_result = await db.execute(
+            select(User).where(User.id.in_(students_in_logs))
+        )
+        students_dict = {u.id: {"name": u.full_name, "email": u.email} for u in student_result.scalars().all()}
+
+    student_stats_map = {}
+    for log in engagement_logs:
+        sid = log.student_id
+        if sid not in student_stats_map:
+            student_stats_map[sid] = {"logs": [], "quizzes": []}
+        student_stats_map[sid]["logs"].append(log)
+    for qa in quiz_attempts:
+        sid = qa.student_id
+        if sid not in student_stats_map:
+            student_stats_map[sid] = {"logs": [], "quizzes": []}
+        student_stats_map[sid]["quizzes"].append(qa)
+
+    student_stats = []
+    # Fetch enrollment statuses to only show active enrolled students or those with history
+    enrollment_result = await db.execute(
+        select(Enrollment).where(
+            Enrollment.course_id == course_id,
+            Enrollment.status == EnrollmentStatus.ACTIVE
+        )
+    )
+    enrolled_student_ids = [e.student_id for e in enrollment_result.scalars().all()]
+    all_student_ids = list(set(enrolled_student_ids + list(student_stats_map.keys())))
+    
+    # We need to fetch users not in students_dict
+    missing_ids = [sid for sid in all_student_ids if sid not in students_dict]
+    if missing_ids:
+        missing_result = await db.execute(select(User).where(User.id.in_(missing_ids)))
+        for u in missing_result.scalars().all():
+            students_dict[u.id] = {"name": u.full_name, "email": u.email}
+
+    for sid in all_student_ids:
+        info = students_dict.get(sid, {"name": "Unknown", "email": ""})
+        s_logs = student_stats_map.get(sid, {}).get("logs", [])
+        s_quizzes = student_stats_map.get(sid, {}).get("quizzes", [])
+        
+        avg_eng = sum((l.engagement_score or 0) for l in s_logs) / max(len(s_logs), 1) if s_logs else None
+        boredom = sum((l.boredom_score or 0) for l in s_logs) / max(len(s_logs), 1) if s_logs else None
+        confusion = sum((l.confusion_score or 0) for l in s_logs) / max(len(s_logs), 1) if s_logs else None
+        tabs = sum((l.tab_switches or 0) for l in s_logs) if s_logs else 0
+        latest_icap = s_logs[0].icap_classification.value if s_logs and s_logs[0].icap_classification else None
+        
+        quiz_avg = sum(((qa.score / qa.max_score * 100) if qa.max_score else 0) for qa in s_quizzes) / max(len(s_quizzes), 1) if s_quizzes else None
+        
+        # Combine all engagement timelines sequentially to make a master timeline
+        master_timeline = []
+        for l in sorted(s_logs, key=lambda x: x.started_at):
+            if hasattr(l, 'scores_timeline') and l.scores_timeline:
+                master_timeline.extend(l.scores_timeline)
+        
+        student_stats.append({
+            "student_id": sid,
+            "name": info["name"],
+            "email": info["email"],
+            "engagement_score": avg_eng,
+            "boredom_score": boredom,
+            "confusion_score": confusion,
+            "tab_switches": tabs,
+            "quiz_score": quiz_avg,
+            "icap_level": latest_icap,
+            "timeline": master_timeline
+        })
+
 
     return {
         "course_id": course_id,
@@ -403,7 +521,8 @@ async def get_course_dashboard(
                 "file_name": (log.details or {}).get("file_name", "Unknown File"),
                 "date": log.created_at.isoformat() if getattr(log, 'created_at', None) else None
             } for log in download_logs[:10]
-        ]
+        ],
+        "student_stats": student_stats
     }
 
 

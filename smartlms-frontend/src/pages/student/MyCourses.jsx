@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { coursesAPI } from '../../api/client';
-import { BookOpen, Search, Users, PlayCircle } from 'lucide-react';
+import { BookOpen, Search, Users, PlayCircle, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useActivity } from '../../context/ActivityTracker';
 
 export default function MyCourses() {
@@ -12,6 +12,8 @@ export default function MyCourses() {
     const [tab, setTab] = useState('enrolled');
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
+    const [enrollingCourseId, setEnrollingCourseId] = useState(null);
+    const [notice, setNotice] = useState(null);
 
     useEffect(() => {
         trackEvent('my_courses_viewed');
@@ -24,15 +26,30 @@ export default function MyCourses() {
         }).finally(() => setLoading(false));
     }, []);
 
+    useEffect(() => {
+        if (!notice) return;
+        const timer = setTimeout(() => setNotice(null), 3000);
+        return () => clearTimeout(timer);
+    }, [notice]);
+
     const handleEnroll = async (courseId) => {
+        setEnrollingCourseId(courseId);
+        setNotice(null);
         try {
             await coursesAPI.enroll(courseId);
             trackEvent('course_enrolled', { course_id: courseId });
-            // Refresh
-            const res = await coursesAPI.getMyCourses();
-            setEnrolled(res.data || []);
+            const [enrolledRes, availableRes] = await Promise.all([
+                coursesAPI.getMyCourses(),
+                coursesAPI.list({ published_only: true }).catch(() => ({ data: [] })),
+            ]);
+            setEnrolled(enrolledRes.data || []);
+            setAvailable(availableRes.data || []);
+            setTab('enrolled');
+            setNotice({ type: 'success', text: 'Enrolled successfully. Course moved to your Enrolled tab.' });
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to enroll');
+            setNotice({ type: 'error', text: err.response?.data?.detail || 'Failed to enroll' });
+        } finally {
+            setEnrollingCourseId(null);
         }
     };
 
@@ -48,7 +65,14 @@ export default function MyCourses() {
     );
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+            {notice && (
+                <div className={`mb-6 rounded-2xl border px-4 py-3 flex items-center gap-3 font-semibold ${notice.type === 'success' ? 'bg-success-light border-success/30 text-success' : 'bg-danger-light border-danger/30 text-danger'}`}>
+                    {notice.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                    <span>{notice.text}</span>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3">My Learning</h1>
@@ -67,7 +91,7 @@ export default function MyCourses() {
                 {tab === 'browse' && (
                     <div className="relative w-full md:w-[450px] group">
                         <Search size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors" />
-                        <input className="input py-4 pl-14 text-base rounded-2xl bg-surface-elevated shadow-sm" placeholder="Search available courses..."
+                        <input className="input py-4 !pl-14 text-base rounded-2xl bg-surface-elevated shadow-sm w-full" placeholder="Search available courses..."
                             value={search} onChange={e => setSearch(e.target.value)} />
                     </div>
                 )}
@@ -150,8 +174,11 @@ export default function MyCourses() {
                                         {course.description || 'No description provided.'}
                                     </p>
                                     <button className="btn btn-secondary btn-lg w-full mt-auto shrink-0 group-hover:bg-accent group-hover:text-white group-hover:border-accent shadow-sm"
+                                        disabled={enrollingCourseId === course.id}
                                         onClick={() => handleEnroll(course.id)}>
-                                        Enroll Now
+                                        {enrollingCourseId === course.id ? (
+                                            <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Enrolling...</span>
+                                        ) : 'Enroll Now'}
                                     </button>
                                 </div>
                             </div>

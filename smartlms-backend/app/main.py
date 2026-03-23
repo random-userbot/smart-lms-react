@@ -5,8 +5,10 @@ FastAPI app with all routers, middleware, and startup events
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import time
+import os
 
 from app.config import settings
 from app.database import create_tables
@@ -56,6 +58,10 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# Serve uploaded lecture/material files
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/media", StaticFiles(directory=settings.UPLOAD_DIR), name="media")
 
 # CORS
 app.add_middleware(

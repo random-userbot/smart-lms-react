@@ -24,6 +24,7 @@ from app.ml.engagement_model import (
     get_engagement_model, get_icap_classifier, get_fuzzy_rules,
     EngagementFeatureExtractor, FEATURE_NAMES
 )
+from app.ml.export_inference_registry import get_export_model_registry
 
 router = APIRouter(prefix="/api/engagement", tags=["Engagement"])
 
@@ -98,6 +99,11 @@ class EngagementScoreResponse(BaseModel):
 class SessionEndRequest(BaseModel):
     session_id: str
     lecture_id: str
+
+
+class ModelInferenceRequest(BaseModel):
+    model_id: str
+    features: List[EngagementFeatures]
 
 
 # ─── ML-Powered Engagement Scoring Engine ────────────────
@@ -419,8 +425,7 @@ async def get_engagement_heatmap(
         raise HTTPException(status_code=404, detail="Lecture not found")
 
     result = await db.execute(
-        select(EngagementLog).where(EngagementLog.lecture_id == lecture_id)
-        .order_by(EngagementLog.started_at)
+        select(EngagementLog).where(EngagementLog.lecture_id == lecture_id).order_by(EngagementLog.started_at)
     )
     logs = result.scalars().all()
 
@@ -431,24 +436,38 @@ async def get_engagement_heatmap(
     segment_count = min(20, max(5, duration // 30))
     segment_length = duration / segment_count
 
+    # Flatten timeline entries once to avoid nested repeated scans.
+    timeline_entries = []
+    for log in logs:
+        if log.scores_timeline:
+            for entry in log.scores_timeline:
+                timeline_entries.append(
+                    {
+                        "timestamp": entry.get("timestamp", 0),
+                        "engagement": entry.get("engagement", 50),
+                        "boredom": entry.get("boredom", 30),
+                        "confusion": entry.get("confusion", 20),
+                    }
+                )
+
     segments = []
     for seg_idx in range(segment_count):
         start_time = seg_idx * segment_length
         end_time = (seg_idx + 1) * segment_length
         seg_engagement, seg_boredom, seg_confusion = [], [], []
 
-        for log in logs:
-            if log.scores_timeline:
-                for entry in log.scores_timeline:
-                    ts = entry.get("timestamp", 0)
-                    if start_time <= ts < end_time:
-                        seg_engagement.append(entry.get("engagement", 50))
-                        seg_boredom.append(entry.get("boredom", 30))
-                        seg_confusion.append(entry.get("confusion", 20))
-            if not seg_engagement:
-                seg_engagement.append(log.engagement_score or 50)
-                seg_boredom.append(log.boredom_score or 30)
-                seg_confusion.append(log.confusion_score or 20)
+        for entry in timeline_entries:
+            ts = entry.get("timestamp", 0)
+            if start_time <= ts < end_time:
+                seg_engagement.append(entry.get("engagement", 50))
+                seg_boredom.append(entry.get("boredom", 30))
+                seg_confusion.append(entry.get("confusion", 20))
+
+        if not seg_engagement:
+            # Fallback to aggregate session scores for sparse timelines.
+            seg_engagement = [log.engagement_score or 50 for log in logs]
+            seg_boredom = [log.boredom_score or 30 for log in logs]
+            seg_confusion = [log.confusion_score or 20 for log in logs]
 
         avg_eng = sum(seg_engagement) / max(len(seg_engagement), 1)
         avg_bore = sum(seg_boredom) / max(len(seg_boredom), 1)
@@ -484,6 +503,104 @@ async def get_engagement_heatmap(
         "avg_engagement": round(sum(s["engagement"] for s in segments) / max(len(segments), 1), 1),
         "pain_points": pain_points,
         "total_views": len(logs),
+    }
+
+
+@router.get("/heatmap/{lecture_id}/me")
+async def get_my_engagement_heatmap(
+    lecture_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get student-specific engagement heatmap for current user and lecture."""
+    lecture_result = await db.execute(select(Lecture).where(Lecture.id == lecture_id))
+    lecture = lecture_result.scalar_one_or_none()
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    result = await db.execute(
+        select(EngagementLog)
+        .where(EngagementLog.lecture_id == lecture_id, EngagementLog.student_id == current_user.id)
+        .order_by(EngagementLog.started_at)
+    )
+    logs = result.scalars().all()
+
+    if not logs:
+        return {"lecture_id": lecture_id, "segments": [], "avg_engagement": 0, "pain_points": [], "scope": "student"}
+
+    duration = lecture.duration or 300
+    segment_count = min(20, max(5, duration // 30))
+    segment_length = duration / segment_count
+
+    timeline_entries = []
+    for log in logs:
+        if log.scores_timeline:
+            for entry in log.scores_timeline:
+                timeline_entries.append(
+                    {
+                        "timestamp": entry.get("timestamp", 0),
+                        "engagement": entry.get("engagement", 50),
+                        "boredom": entry.get("boredom", 30),
+                        "confusion": entry.get("confusion", 20),
+                    }
+                )
+
+    segments = []
+    for seg_idx in range(segment_count):
+        start_time = seg_idx * segment_length
+        end_time = (seg_idx + 1) * segment_length
+        seg_engagement, seg_boredom, seg_confusion = [], [], []
+
+        for entry in timeline_entries:
+            ts = entry.get("timestamp", 0)
+            if start_time <= ts < end_time:
+                seg_engagement.append(entry.get("engagement", 50))
+                seg_boredom.append(entry.get("boredom", 30))
+                seg_confusion.append(entry.get("confusion", 20))
+
+        if not seg_engagement:
+            seg_engagement = [log.engagement_score or 50 for log in logs]
+            seg_boredom = [log.boredom_score or 30 for log in logs]
+            seg_confusion = [log.confusion_score or 20 for log in logs]
+
+        avg_eng = sum(seg_engagement) / max(len(seg_engagement), 1)
+        avg_bore = sum(seg_boredom) / max(len(seg_boredom), 1)
+        avg_conf = sum(seg_confusion) / max(len(seg_confusion), 1)
+
+        segments.append(
+            {
+                "index": seg_idx,
+                "start_time": round(start_time, 1),
+                "end_time": round(end_time, 1),
+                "engagement": round(avg_eng, 1),
+                "boredom": round(avg_bore, 1),
+                "confusion": round(avg_conf, 1),
+                "intensity": round(avg_eng / 100.0, 3),
+                "student_count": 1,
+            }
+        )
+
+    pain_points = [
+        {
+            "segment": s["index"],
+            "time_range": f"{int(s['start_time'])}s - {int(s['end_time'])}s",
+            "issue": "high_confusion" if s["confusion"] > 50 else "low_engagement",
+            "severity": "high" if s["engagement"] < 25 or s["confusion"] > 70 else "medium",
+        }
+        for s in segments
+        if s["engagement"] < 40 or s["confusion"] > 50
+    ]
+
+    return {
+        "lecture_id": lecture_id,
+        "lecture_title": lecture.title,
+        "duration": duration,
+        "segment_count": segment_count,
+        "segments": segments,
+        "avg_engagement": round(sum(s["engagement"] for s in segments) / max(len(segments), 1), 1),
+        "pain_points": pain_points,
+        "total_views": len(logs),
+        "scope": "student",
     }
 
 
@@ -524,3 +641,30 @@ async def get_model_info(current_user: User = Depends(get_current_user)):
         "shap_enabled": True,
         "fuzzy_rules_enabled": True,
     }
+
+
+@router.get("/models")
+async def list_runtime_models(current_user: User = Depends(get_current_user)):
+    """List all runtime-selectable models, including exported models."""
+    registry = get_export_model_registry()
+    return {
+        "models": registry.list_models(),
+        "count": len(registry.list_models()),
+    }
+
+
+@router.post("/models/infer")
+async def infer_with_selected_model(
+    request: ModelInferenceRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Run inference with a user-selected model on real captured feature batches."""
+    registry = get_export_model_registry()
+    try:
+        result = registry.infer(
+            model_id=request.model_id,
+            features=[f.model_dump() for f in request.features],
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Model inference failed: {exc}")

@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     DEBUG_MODE: bool = True
     DEBUG_LOG_DIR: str = "./debug_logs"
 
+    # SQL / Performance
+    SQL_ECHO: bool = False
+
+    # Local media storage (store file path in DB, bytes on disk/object store)
+    UPLOAD_DIR: str = "./uploads"
+    MAX_VIDEO_UPLOAD_MB: int = 250
+    MAX_MATERIAL_UPLOAD_MB: int = 50
+
     class Config:
         env_file = ".env"
         extra = "allow"
@@ -45,3 +53,6 @@ settings = Settings()
 # Ensure debug log directory exists
 if settings.DEBUG_MODE:
     os.makedirs(settings.DEBUG_LOG_DIR, exist_ok=True)
+
+# Ensure upload directory exists
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import StudentCourses from './pages/student/MyCourses';
+import StudentQuizzes from './pages/student/MyQuizzes';
 import CoursePage from './pages/student/CoursePage';
 import LecturePage from './pages/student/LecturePage';
 import StudentAnalytics from './pages/student/MyAnalytics';
@@ -19,6 +20,8 @@ import AITutor from './pages/student/AITutor';
 import TeacherCourses from './pages/teacher/ManageCourses';
 import EditCourse from './pages/teacher/EditCourse';
 import TeachingDashboard from './pages/teacher/TeachingDashboard';
+import AIQuizGenerator from './pages/teacher/AIQuizGenerator';
+import SearchResults from './pages/SearchResults';
 import AdminUsers from './pages/admin/UserManagement';
 import AdminTeachers from './pages/admin/TeacherOverview';
 import Messages from './pages/Messages';
@@ -90,6 +93,11 @@ function AppRoutes() {
             <AppLayout><PageTransitionWrapper><StudentCourses /></PageTransitionWrapper></AppLayout>
           </ProtectedRoute>
         } />
+        <Route path="/my-quizzes" element={
+          <ProtectedRoute roles={['student']}>
+            <AppLayout><PageTransitionWrapper><StudentQuizzes /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
         <Route path="/courses/:courseId" element={
           <ProtectedRoute>
             <AppLayout><PageTransitionWrapper><CoursePage /></PageTransitionWrapper></AppLayout>
@@ -135,6 +143,16 @@ function AppRoutes() {
         <Route path="/manage-courses/:courseId" element={
           <ProtectedRoute roles={['teacher']}>
             <AppLayout><PageTransitionWrapper><EditCourse /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/manage-courses/:courseId/quiz-gen/:lectureId" element={
+          <ProtectedRoute roles={['teacher']}>
+            <AppLayout><PageTransitionWrapper><AIQuizGenerator /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/search" element={
+          <ProtectedRoute>
+            <AppLayout><PageTransitionWrapper><SearchResults /></PageTransitionWrapper></AppLayout>
           </ProtectedRoute>
         } />
         <Route path="/teaching-dashboard" element={

@@ -5,16 +5,18 @@ Quiz CRUD, AI generation, attempts, anti-cheating, grading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
 from app.database import get_db
 from app.models.models import (
-    User, UserRole, Quiz, QuizAttempt, Lecture, Notification, NotificationType
+    User, UserRole, Quiz, QuizAttempt, Lecture, Course, Enrollment, Notification, NotificationType
 )
 from app.middleware.auth import get_current_user, require_teacher_or_admin
 from app.services.debug_logger import debug_logger
+from app.services.youtube_service import get_video_transcript
+from app.services.quiz_generator_service import generate_quiz_questions
 
 router = APIRouter(prefix="/api/quizzes", tags=["Quizzes"])
 
@@ -37,6 +39,7 @@ class QuizCreate(BaseModel):
     description: Optional[str] = None
     questions: List[QuizQuestion]
     time_limit: int = 600
+    is_published: bool = True
     anti_cheat_enabled: bool = True
     webcam_required: bool = True
 
@@ -98,6 +101,12 @@ class AIQuizGenerateRequest(BaseModel):
     include_icap: bool = True
 
 
+class AIQuizRefineRequest(BaseModel):
+    lecture_id: str
+    current_questions: List[Dict]
+    feedback: str
+
+
 # ─── Routes ──────────────────────────────────────────────
 
 @router.get("/lecture/{lecture_id}", response_model=List[QuizResponse])
@@ -127,6 +136,83 @@ async def get_lecture_quizzes(
     return responses
 
 
+@router.get("/mine")
+async def get_my_quizzes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all quizzes visible to the current user.
+
+    Students receive quizzes from their enrolled courses only.
+    Teachers/Admin receive all quizzes.
+    """
+    query = (
+        select(Quiz, Lecture.title, Course.title)
+        .join(Lecture, Lecture.id == Quiz.lecture_id)
+        .join(Course, Course.id == Lecture.course_id)
+        .order_by(desc(Quiz.created_at))
+    )
+
+    if current_user.role == UserRole.STUDENT:
+        query = (
+            query.join(Enrollment, Enrollment.course_id == Course.id)
+            .where(
+                Enrollment.student_id == current_user.id,
+                Quiz.is_published == True,
+            )
+        )
+
+    rows = (await db.execute(query)).all()
+    if not rows:
+        return []
+
+    quiz_ids = [q.id for q, _, _ in rows]
+    attempts_by_quiz: Dict[str, List[QuizAttempt]] = {}
+
+    if current_user.role == UserRole.STUDENT:
+        attempts = (
+            await db.execute(
+                select(QuizAttempt)
+                .where(QuizAttempt.student_id == current_user.id, QuizAttempt.quiz_id.in_(quiz_ids))
+                .order_by(desc(QuizAttempt.completed_at))
+            )
+        ).scalars().all()
+        for a in attempts:
+            attempts_by_quiz.setdefault(a.quiz_id, []).append(a)
+
+    response = []
+    for quiz, lecture_title, course_title in rows:
+        q_dict = QuizResponse.model_validate(quiz).model_dump()
+        if current_user.role == UserRole.STUDENT:
+            for question in q_dict.get("questions", []):
+                question.pop("correct_answer", None)
+                question.pop("explanation", None)
+
+        attempts = attempts_by_quiz.get(quiz.id, [])
+        latest_percentage = None
+        best_percentage = None
+        if attempts:
+            latest = attempts[0]
+            latest_percentage = round((latest.score / latest.max_score * 100) if latest.max_score else 0, 1)
+            best_percentage = round(
+                max((a.score / a.max_score * 100) if a.max_score else 0 for a in attempts),
+                1,
+            )
+
+        response.append(
+            {
+                **q_dict,
+                "lecture_title": lecture_title,
+                "course_title": course_title,
+                "attempt_count": len(attempts),
+                "latest_percentage": latest_percentage,
+                "best_percentage": best_percentage,
+            }
+        )
+
+    return response
+
+
 @router.post("", response_model=QuizResponse, status_code=201)
 async def create_quiz(
     request: QuizCreate,
@@ -140,6 +226,7 @@ async def create_quiz(
         description=request.description,
         questions=[q.model_dump() for q in request.questions],
         time_limit=request.time_limit,
+        is_published=request.is_published,
         anti_cheat_enabled=request.anti_cheat_enabled,
         webcam_required=request.webcam_required,
     )
@@ -319,10 +406,16 @@ async def generate_ai_quiz(
 
     transcript = lecture.transcript or ""
     if not transcript:
-        raise HTTPException(status_code=400, detail="Lecture has no transcript. Please add transcript first.")
+        if lecture.youtube_url:
+            transcript = await get_video_transcript(lecture.youtube_url, prefer_local=True)
+            if transcript:
+                lecture.transcript = transcript
+                await db.commit()
+                await db.refresh(lecture)
+        if not transcript:
+            raise HTTPException(status_code=400, detail="Transcript is not ready yet. It is being generated in the background. Please retry in a minute.")
 
     try:
-        from app.services.quiz_generator_service import generate_quiz_questions
         questions = await generate_quiz_questions(
             transcript=transcript,
             num_questions=request.num_questions,
@@ -333,3 +426,39 @@ async def generate_ai_quiz(
     except Exception as e:
         debug_logger.log("error", f"AI quiz generation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
+
+@router.post("/generate-ai-refine")
+async def refine_ai_quiz(
+    request: AIQuizRefineRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    """Refine generated quiz questions using AI from lecture transcript and feedback"""
+    # Get lecture
+    result = await db.execute(select(Lecture).where(Lecture.id == request.lecture_id))
+    lecture = result.scalar_one_or_none()
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    transcript = lecture.transcript or ""
+    if not transcript:
+        if lecture.youtube_url:
+            transcript = await get_video_transcript(lecture.youtube_url, prefer_local=True)
+            if transcript:
+                lecture.transcript = transcript
+                await db.commit()
+                await db.refresh(lecture)
+        if not transcript:
+            raise HTTPException(status_code=400, detail="Transcript is not ready yet. Please retry shortly.")
+
+    try:
+        from app.services.quiz_generator_service import refine_quiz_questions
+        questions = await refine_quiz_questions(
+            transcript=transcript,
+            current_questions=request.current_questions,
+            feedback=request.feedback,
+        )
+        return {"questions": questions, "count": len(questions)}
+    except Exception as e:
+        debug_logger.log("error", f"AI quiz refinement failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Quiz refinement failed: {str(e)}")

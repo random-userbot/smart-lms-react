@@ -35,7 +35,7 @@ export default function UserManagement() {
     if (loading) return <div className="flex h-[50vh] items-center justify-center"><div className="w-12 h-12 border-4 border-accent-light border-t-accent rounded-full animate-spin"></div></div>;
 
     return (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3">User Management</h1>
@@ -55,7 +55,7 @@ export default function UserManagement() {
                 <div className="p-6 border-b border-border bg-surface-alt">
                     <div className="relative w-full md:w-[450px] group">
                         <Search size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors" />
-                        <input className="input py-4 pl-14 text-base rounded-2xl bg-surface-elevated shadow-sm w-full"
+                        <input className="input py-4 !pl-14 text-base rounded-2xl bg-surface-elevated shadow-sm w-full"
                             placeholder="Search by name, username, or email..." value={search}
                             onChange={e => setSearch(e.target.value)} />
                     </div>

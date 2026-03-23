@@ -1,0 +1,24 @@
+{
+  "model": "model1_bilstm_optimized",
+  "timestamp": "20251117_150730",
+  "test_loss": 13.326815605163574,
+  "overall_accuracy": 0.22451159951159952,
+  "per_dimension_accuracy": {
+    "Boredom": 0.17765567765567766,
+    "Engagement": 0.054945054945054944,
+    "Confusion": 0.29975579975579975,
+    "Frustration": 0.36568986568986567
+  },
+  "improvement_from_baseline": -36.12884004884005,
+  "training_epochs": 29,
+  "optimizations": [
+    "class_weighted_loss",
+    "ordinal_regression",
+    "label_smoothing_0.1",
+    "temporal_augmentation",
+    "larger_architecture_256_128",
+    "l2_regularization",
+    "attention_mechanism"
+  ],
+  "parameters": 1808017
+}

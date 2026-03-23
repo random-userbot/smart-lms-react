@@ -2,10 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useActivity } from '../../context/ActivityTracker';
-import { notificationsAPI, messagesAPI } from '../../api/client';
+import { notificationsAPI, messagesAPI, coursesAPI } from '../../api/client';
 import {
-    Bell, User, LogOut, Settings, ChevronDown,
-    BookOpen, Activity, Zap, MessageSquare, Menu, X
+    Bell, User, LogOut, Settings, ChevronDown, ChevronLeft,
+    BookOpen, Activity, Zap, MessageSquare, Menu, X, Search, Check, CheckCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ThemeToggle from './ThemeToggle';
@@ -21,7 +21,14 @@ export default function Navbar() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [sessionTime, setSessionTime] = useState(0);
+    const [notifOpen, setNotifOpen] = useState(false);
+    const [notifications, setNotifications] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [showSearchResults, setShowSearchResults] = useState(false);
     const dropdownRef = useRef(null);
+    const notifRef = useRef(null);
+    const searchRef = useRef(null);
 
     useEffect(() => {
         if (user) {
@@ -36,9 +43,9 @@ export default function Navbar() {
 
     useEffect(() => {
         const handler = (e) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-                setDropdownOpen(false);
-            }
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false);
+            if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
+            if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearchResults(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -67,23 +74,97 @@ export default function Navbar() {
         navigate('/login');
     };
 
+    const openNotifications = async () => {
+        setNotifOpen(!notifOpen);
+        setDropdownOpen(false);
+        if (!notifOpen) {
+            try {
+                const res = await notificationsAPI.list({ limit: 10 });
+                setNotifications(res.data || []);
+            } catch { setNotifications([]); }
+        }
+    };
+
+    const handleMarkAllRead = async () => {
+        try {
+            await notificationsAPI.markAllRead();
+            setUnreadCount(0);
+            setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        } catch { }
+    };
+
+    const handleSearch = (e) => {
+        const q = e.target.value;
+        setSearchQuery(q);
+        if (q.trim().length > 1) {
+            setShowSearchResults(true);
+        } else {
+            setShowSearchResults(false);
+        }
+    };
+
+    const handleSearchSubmit = (e) => {
+        if (e.key === 'Enter' && searchQuery.trim()) {
+            setShowSearchResults(false);
+            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        }
+    };
+
     return (
         <nav className="sticky top-0 z-50 w-full border-b border-border transition-colors h-16 md:h-[72px] flex items-center bg-surface/85 backdrop-blur-xl"
             style={{ WebkitBackdropFilter: 'blur(20px) saturate(180%)' }}>
-            <div className="max-w-[1440px] w-full mx-auto px-6 md:px-10 flex items-center justify-between">
+            <div className="w-full px-6 md:px-10 flex items-center justify-between">
                 
-                {/* Logo */}
-                <Link to={user ? '/dashboard' : '/'} className="flex items-center gap-3 group">
+                {/* Back Button & Logo */}
+                <div className="flex items-center gap-4">
+                    {user && location.pathname !== '/dashboard' && location.pathname !== '/' && (
+                        <button 
+                            onClick={() => navigate(-1)} 
+                            className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-surface-alt border border-border text-text-secondary hover:text-text hover:border-text-muted transition-all shadow-sm group"
+                            title="Go Back"
+                        >
+                            <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
+                        </button>
+                    )}
+                    <Link to={user ? '/dashboard' : '/'} className="flex items-center gap-3 group">
                     <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:shadow-accent group-hover:scale-105 transition-all duration-300">
                         <BookOpen size={20} className="text-white" strokeWidth={2.5} />
                     </div>
                     <span className="text-xl md:text-2xl font-extrabold tracking-tight text-text">
                         Smart<span className="text-accent">LMS</span>
                     </span>
-                </Link>
+                    </Link>
+                </div>
+
+                {/* Search Bar */}
+                {user && (
+                    <div ref={searchRef} className="hidden lg:flex flex-1 max-w-md mx-8 relative group">
+                        <input
+                            type="text"
+                            placeholder="Search courses, materials..."
+                            value={searchQuery}
+                            onChange={handleSearch}
+                            onKeyDown={handleSearchSubmit}
+                            onFocus={() => searchQuery.trim().length > 1 && setShowSearchResults(true)}
+                            className="w-full pl-6 pr-12 py-2.5 bg-surface-alt border border-border rounded-xl focus:ring-4 focus:ring-accent/20 focus:border-accent outline-none text-sm font-medium transition-all placeholder-text-muted text-text"
+                        />
+                        <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors pointer-events-none z-10" />
+                        {showSearchResults && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-surface rounded-2xl border border-border shadow-2xl z-50 py-3 px-2 max-h-64 overflow-y-auto">
+                                <p className="text-xs font-bold text-text-muted px-3 mb-2">Press Enter to search for "{searchQuery}"</p>
+                                <button onClick={() => { navigate(`/search?q=${encodeURIComponent(searchQuery)}`); setShowSearchResults(false); }} className="w-full text-left px-3 py-2.5 text-sm font-semibold text-text hover:bg-accent-light hover:text-accent rounded-xl transition-colors flex items-center gap-2">
+                                    <Search size={16} /> Search Everywhere
+                                </button>
+                                <button onClick={() => { navigate(`/my-courses?q=${encodeURIComponent(searchQuery)}`); setShowSearchResults(false); }} className="w-full text-left px-3 py-2.5 text-sm font-semibold text-text hover:bg-accent-light hover:text-accent rounded-xl transition-colors flex items-center gap-2">
+                                    <BookOpen size={16} /> View in Courses
+                                </button>
+                            </div>
+                        )/* End showSearchResults */}
+                    </div>
+                )}
 
                 {/* Right Actions */}
-                <div className="flex items-center gap-2 md:gap-4">
+                <div className="flex items-center gap-2 md:gap-5 ml-auto">
                     
                     <div className="hidden sm:block">
                         <ThemeToggle />
@@ -122,16 +203,69 @@ export default function Navbar() {
                                 )}
                             </button>
 
-                            <button
-                                className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light transition-all relative"
-                                onClick={() => navigate('/dashboard')}
-                                title="Notifications"
-                            >
-                                <Bell size={19} strokeWidth={2} />
-                                {unreadCount > 0 && (
-                                    <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-danger rounded-full border-2 border-surface"></span>
-                                )}
-                            </button>
+                            <div ref={notifRef} className="relative">
+                                <button
+                                    className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light transition-all relative"
+                                    onClick={openNotifications}
+                                    title="Notifications"
+                                >
+                                    <Bell size={19} strokeWidth={2} />
+                                    {unreadCount > 0 && (
+                                        <span className="absolute top-1 right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-danger text-white text-[9px] font-black rounded-full border-2 border-surface">
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
+                                    )}
+                                </button>
+
+                                <AnimatePresence>
+                                    {notifOpen && (
+                                        <motion.div
+                                            className="absolute right-0 mt-2 w-80 md:w-96 bg-surface rounded-2xl shadow-2xl border border-border z-50 origin-top-right max-h-[420px] flex flex-col"
+                                            initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                                            transition={{ duration: 0.15, ease: 'easeOut' }}
+                                        >
+                                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+                                                <h3 className="text-sm font-black text-text tracking-tight">Notifications</h3>
+                                                {unreadCount > 0 && (
+                                                    <button onClick={handleMarkAllRead} className="text-xs font-bold text-accent hover:underline flex items-center gap-1">
+                                                        <CheckCheck size={14} /> Mark all read
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="overflow-y-auto flex-1 py-1">
+                                                {notifications.length === 0 ? (
+                                                    <div className="text-center py-10 px-4">
+                                                        <Bell size={28} className="mx-auto text-text-muted mb-2 opacity-40" />
+                                                        <p className="text-sm font-semibold text-text-muted">No notifications yet</p>
+                                                    </div>
+                                                ) : (
+                                                    notifications.map((n, i) => (
+                                                        <div key={n.id || i} className={`px-5 py-3 border-b border-border/50 last:border-none hover:bg-surface-alt transition-colors cursor-pointer ${!n.is_read ? 'bg-accent-light/30' : ''}`}
+                                                            onClick={async () => {
+                                                                if (!n.is_read) {
+                                                                    try { await notificationsAPI.markRead(n.id); setUnreadCount(prev => Math.max(0, prev - 1)); } catch {}
+                                                                }
+                                                                setNotifOpen(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex items-start gap-3">
+                                                                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${!n.is_read ? 'bg-accent' : 'bg-transparent'}`} />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-semibold text-text truncate">{n.title || 'Notification'}</p>
+                                                                    <p className="text-xs text-text-muted line-clamp-2 mt-0.5">{n.message || ''}</p>
+                                                                    <p className="text-[10px] text-text-muted mt-1 font-medium">{n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
 
                             {/* Profile Dropdown */}
                             <div ref={dropdownRef} className="relative ml-1">
