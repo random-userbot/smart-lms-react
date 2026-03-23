@@ -107,6 +107,30 @@ function computeGazeScore(lm) {
     }
 }
 
+function computeGazeAngles(lm) {
+    try {
+        const leftIris = lm[LANDMARKS.LEFT_IRIS];
+        const leftInner = lm[LANDMARKS.LEFT_EYE_INNER];
+        const leftOuter = lm[LANDMARKS.LEFT_EYE_OUTER];
+        const leftTop = lm[LANDMARKS.LEFT_EYE[1]];
+        const leftBottom = lm[LANDMARKS.LEFT_EYE[4]];
+
+        const eyeWidth = dist2D(leftInner, leftOuter);
+        const eyeHeight = dist2D(leftTop, leftBottom);
+        const horizontalPos = eyeWidth > 0 ? dist2D(leftIris, leftOuter) / eyeWidth : 0.5;
+        const verticalPos = eyeHeight > 0 ? dist2D(leftIris, leftTop) / eyeHeight : 0.5;
+
+        const gazeAngleX = clamp((horizontalPos - 0.5) * 2.0, -1, 1);
+        const gazeAngleY = clamp((verticalPos - 0.5) * 2.0, -1, 1);
+        return {
+            gazeAngleX: roundTo(gazeAngleX, 4),
+            gazeAngleY: roundTo(gazeAngleY, 4),
+        };
+    } catch {
+        return { gazeAngleX: 0, gazeAngleY: 0 };
+    }
+}
+
 /**
  * Head pose estimation from 2D landmark positions
  * Returns { yaw, pitch, roll } in approximate degrees
@@ -242,14 +266,76 @@ function computeActionUnits(lm) {
         const chinNoseDist = normalize(dist2D(lm[LANDMARKS.CHIN], noseTip));
         const au26 = clamp((chinNoseDist - 0.3) * 3.0, 0, 1);
 
-        return { au01, au02, au04, au06, au12, au15, au25, au26 };
+        // Additional OpenFace-style AU proxies
+        const avgEAR = (computeEAR(lm, LANDMARKS.LEFT_EYE) + computeEAR(lm, LANDMARKS.RIGHT_EYE)) / 2;
+        const au07 = clamp((0.3 - avgEAR) * 5.0, 0, 1); // lid tighten when eyes narrow
+        const au09 = clamp((1.0 - mouthNoseDist) * 0.9, 0, 1); // nose wrinkle proxy
+        const au10 = clamp((au25 * 0.6) + (au15 * 0.4), 0, 1); // upper lip raiser proxy
+        const au14 = clamp((au12 * 0.7) + (au04 * 0.3), 0, 1); // dimpler proxy
+        const au17 = clamp((au26 * 0.8) + (au15 * 0.4), 0, 1); // chin raiser proxy
+        const au20 = clamp((au25 * 0.5) + (au04 * 0.5), 0, 1); // lip stretch proxy
+        const au23 = clamp((au04 * 0.6) + (1.0 - au25) * 0.4, 0, 1); // lip tightener proxy
+        const au45 = clamp((0.26 - avgEAR) * 8.0, 0, 1); // blink proxy
+
+        return {
+            au01,
+            au02,
+            au04,
+            au06,
+            au07,
+            au09,
+            au10,
+            au12,
+            au14,
+            au15,
+            au17,
+            au20,
+            au23,
+            au25,
+            au26,
+            au45,
+        };
     } catch {
         return defaultAUs();
     }
 }
 
 function defaultAUs() {
-    return { au01: 0, au02: 0, au04: 0, au06: 0, au12: 0, au15: 0, au25: 0, au26: 0 };
+    return {
+        au01: 0,
+        au02: 0,
+        au04: 0,
+        au06: 0,
+        au07: 0,
+        au09: 0,
+        au10: 0,
+        au12: 0,
+        au14: 0,
+        au15: 0,
+        au17: 0,
+        au20: 0,
+        au23: 0,
+        au25: 0,
+        au26: 0,
+        au45: 0,
+    };
+}
+
+function estimateEmotionChannels(gazeScore, aus) {
+    const joy = clamp(aus.au12 * 0.6 + aus.au06 * 0.4, 0, 1);
+    const sadness = clamp(aus.au15 * 0.65 + (1 - gazeScore) * 0.35, 0, 1);
+    const anger = clamp(aus.au04 * 0.5 + aus.au23 * 0.5, 0, 1);
+    const fear = clamp(aus.au01 * 0.35 + aus.au02 * 0.35 + aus.au25 * 0.3, 0, 1);
+    const surprise = clamp(aus.au01 * 0.25 + aus.au02 * 0.25 + aus.au26 * 0.5, 0, 1);
+
+    return {
+        emotion_happy: roundTo(joy, 4),
+        emotion_sad: roundTo(sadness, 4),
+        emotion_angry: roundTo(anger, 4),
+        emotion_fear: roundTo(fear, 4),
+        emotion_surprise: roundTo(surprise, 4),
+        emotion_neutral: roundTo(clamp(1 - Math.max(joy, sadness, anger, fear, surprise), 0, 1), 4),
+    };
 }
 
 
@@ -354,9 +440,12 @@ export class MediaPipeExtractor {
                 eye_aspect_ratio_right: 0,
                 blink_rate: 0,
                 mouth_openness: 0,
-                ...defaultAUs('au'),
+                ...defaultAUs(),
             };
             this.lastLandmarks = null;
+            if (this.onFeaturesReady) {
+                this.onFeaturesReady(this.lastFeatures);
+            }
             return;
         }
 
@@ -366,10 +455,12 @@ export class MediaPipeExtractor {
         // Extract all features
         const gaze = computeGazeScore(landmarks);
         const headPose = computeHeadPose(landmarks);
+        const gazeAngles = computeGazeAngles(landmarks);
         const earLeft = computeEAR(landmarks, LANDMARKS.LEFT_EYE);
         const earRight = computeEAR(landmarks, LANDMARKS.RIGHT_EYE);
         const mouthOpen = computeMouthOpenness(landmarks);
         const aus = computeActionUnits(landmarks);
+        const emotions = estimateEmotionChannels(gaze, aus);
 
         // Update blink detection
         const avgEAR = (earLeft + earRight) / 2;
@@ -410,19 +501,47 @@ export class MediaPipeExtractor {
             head_pose_yaw: roundTo(headPose.yaw, 2),
             head_pose_pitch: roundTo(headPose.pitch, 2),
             head_pose_roll: roundTo(headPose.roll, 2),
+            gaze_angle_x: gazeAngles.gazeAngleX,
+            gaze_angle_y: gazeAngles.gazeAngleY,
             head_pose_stability: roundTo(stability, 4),
             eye_aspect_ratio_left: roundTo(earLeft, 4),
             eye_aspect_ratio_right: roundTo(earRight, 4),
             blink_rate: blinkRate,
+            blink_left: avgEAR < this.blinkThreshold ? 1 : 0,
+            blink_right: avgEAR < this.blinkThreshold ? 1 : 0,
             mouth_openness: roundTo(mouthOpen, 4),
             au01_inner_brow_raise: roundTo(aus.au01, 4),
             au02_outer_brow_raise: roundTo(aus.au02, 4),
             au04_brow_lowerer: roundTo(aus.au04, 4),
             au06_cheek_raiser: roundTo(aus.au06, 4),
+            au07_lid_tightener: roundTo(aus.au07, 4),
+            au09_nose_wrinkler: roundTo(aus.au09, 4),
+            au10_upper_lip_raiser: roundTo(aus.au10, 4),
             au12_lip_corner_puller: roundTo(aus.au12, 4),
+            au14_dimpler: roundTo(aus.au14, 4),
             au15_lip_corner_depressor: roundTo(aus.au15, 4),
+            au17_chin_raiser: roundTo(aus.au17, 4),
+            au20_lip_stretcher: roundTo(aus.au20, 4),
+            au23_lip_tightener: roundTo(aus.au23, 4),
             au25_lips_part: roundTo(aus.au25, 4),
             au26_jaw_drop: roundTo(aus.au26, 4),
+            au45_blink: roundTo(aus.au45, 4),
+            pose_Rx: roundTo(headPose.pitch, 2),
+            pose_Ry: roundTo(headPose.yaw, 2),
+            pose_Rz: roundTo(headPose.roll, 2),
+            pose_Tx: roundTo(landmarks[LANDMARKS.NOSE_TIP]?.x || 0, 4),
+            pose_Ty: roundTo(landmarks[LANDMARKS.NOSE_TIP]?.y || 0, 4),
+            pose_Tz: roundTo(landmarks[LANDMARKS.NOSE_TIP]?.z || 0, 4),
+            AU01_r: roundTo(aus.au01, 4),
+            AU02_r: roundTo(aus.au02, 4),
+            AU04_r: roundTo(aus.au04, 4),
+            AU06_r: roundTo(aus.au06, 4),
+            AU12_r: roundTo(aus.au12, 4),
+            AU15_r: roundTo(aus.au15, 4),
+            AU25_r: roundTo(aus.au25, 4),
+            AU26_r: roundTo(aus.au26, 4),
+            AU45_r: roundTo(aus.au45, 4),
+            ...emotions,
         };
 
         if (this.onFeaturesReady) {
@@ -495,14 +614,47 @@ export function createMediaPipeFeatureVector(sessionId, lectureId, facialFeature
         eye_aspect_ratio_right: features.eye_aspect_ratio_right ?? 0,
         blink_rate: features.blink_rate ?? 0,
         mouth_openness: features.mouth_openness ?? 0,
+        gaze_angle_x: features.gaze_angle_x ?? 0,
+        gaze_angle_y: features.gaze_angle_y ?? 0,
         au01_inner_brow_raise: features.au01_inner_brow_raise ?? 0,
         au02_outer_brow_raise: features.au02_outer_brow_raise ?? 0,
         au04_brow_lowerer: features.au04_brow_lowerer ?? 0,
         au06_cheek_raiser: features.au06_cheek_raiser ?? 0,
+        au07_lid_tightener: features.au07_lid_tightener ?? 0,
+        au09_nose_wrinkler: features.au09_nose_wrinkler ?? 0,
+        au10_upper_lip_raiser: features.au10_upper_lip_raiser ?? 0,
         au12_lip_corner_puller: features.au12_lip_corner_puller ?? 0,
+        au14_dimpler: features.au14_dimpler ?? 0,
         au15_lip_corner_depressor: features.au15_lip_corner_depressor ?? 0,
+        au17_chin_raiser: features.au17_chin_raiser ?? 0,
+        au20_lip_stretcher: features.au20_lip_stretcher ?? 0,
+        au23_lip_tightener: features.au23_lip_tightener ?? 0,
         au25_lips_part: features.au25_lips_part ?? 0,
         au26_jaw_drop: features.au26_jaw_drop ?? 0,
+        au45_blink: features.au45_blink ?? 0,
+        blink_left: features.blink_left ?? 0,
+        blink_right: features.blink_right ?? 0,
+        pose_Rx: features.pose_Rx ?? features.head_pose_pitch ?? 0,
+        pose_Ry: features.pose_Ry ?? features.head_pose_yaw ?? 0,
+        pose_Rz: features.pose_Rz ?? features.head_pose_roll ?? 0,
+        pose_Tx: features.pose_Tx ?? 0,
+        pose_Ty: features.pose_Ty ?? 0,
+        pose_Tz: features.pose_Tz ?? 0,
+        AU01_r: features.AU01_r ?? features.au01_inner_brow_raise ?? 0,
+        AU02_r: features.AU02_r ?? features.au02_outer_brow_raise ?? 0,
+        AU04_r: features.AU04_r ?? features.au04_brow_lowerer ?? 0,
+        AU06_r: features.AU06_r ?? features.au06_cheek_raiser ?? 0,
+        AU12_r: features.AU12_r ?? features.au12_lip_corner_puller ?? 0,
+        AU15_r: features.AU15_r ?? features.au15_lip_corner_depressor ?? 0,
+        AU25_r: features.AU25_r ?? features.au25_lips_part ?? 0,
+        AU26_r: features.AU26_r ?? features.au26_jaw_drop ?? 0,
+        AU45_r: features.AU45_r ?? features.au45_blink ?? 0,
+        emotion_happy: features.emotion_happy ?? 0,
+        emotion_sad: features.emotion_sad ?? 0,
+        emotion_angry: features.emotion_angry ?? 0,
+        emotion_fear: features.emotion_fear ?? 0,
+        emotion_surprise: features.emotion_surprise ?? 0,
+        emotion_neutral: features.emotion_neutral ?? 1,
         face_detected: features.face_detected ?? false,
         // Behavioral signals (always real)
         keyboard_active: behaviorState.keyboardActive,

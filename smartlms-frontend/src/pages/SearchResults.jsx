@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { coursesAPI, messagesAPI } from '../api/client';
-import { BookOpen, MessageSquare, ChevronRight, ChevronLeft, Search, User, Filter, LayoutGrid, List, MessageCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { BookOpen, MessageSquare, ChevronRight, ChevronLeft, Search, LayoutGrid } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const RowSection = ({ title, icon: Icon, children, isEmpty, isLoading, scrollRef }) => {
     const scroll = (direction) => {
@@ -106,22 +106,23 @@ export default function SearchResults() {
     return (
         <div className="min-h-screen bg-surface-alt">
             {/* Header */}
-            <div className="bg-surface border-b border-border py-12 px-6 lg:px-10">
+            <div className="bg-gradient-to-br from-primary to-accent py-12 px-6 lg:px-10 text-white relative overflow-hidden">
+                <div className="absolute -right-10 -top-10 opacity-20 pointer-events-none"><Search size={220} /></div>
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
                         <div>
-                            <div className="flex items-center gap-3 text-accent font-black uppercase tracking-[0.2em] text-xs mb-4">
+                            <div className="flex items-center gap-3 text-white/85 font-black uppercase tracking-[0.2em] text-xs mb-4">
                                 <Search size={14} strokeWidth={3} /> Search Intelligence
                             </div>
-                            <h1 className="text-4xl md:text-6xl font-black text-text tracking-tighter mb-4">
-                                Results for <span className="text-accent">"{query}"</span>
+                            <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4">
+                                Results for <span className="text-white">"{query}"</span>
                             </h1>
-                            <p className="text-text-secondary font-medium text-xl max-w-2xl leading-relaxed">
+                            <p className="text-white/85 font-medium text-xl max-w-2xl leading-relaxed">
                                 Universal discovery across all classes, lectures, and academic communications.
                             </p>
                         </div>
-                        <div className="bg-surface-alt p-2 rounded-2xl border border-border flex items-center gap-2">
-                             <div className="px-6 py-3 bg-surface rounded-xl border border-border font-black text-accent text-sm shadow-sm">
+                        <div className="bg-white/10 p-2 rounded-2xl border border-white/20 flex items-center gap-2">
+                             <div className="px-6 py-3 bg-white rounded-xl border border-white/40 font-black text-accent text-sm shadow-sm">
                                 {courses.length + messages.length} Mentions Found
                              </div>
                         </div>
@@ -131,6 +132,7 @@ export default function SearchResults() {
 
             <div className="max-w-7xl mx-auto px-6 lg:px-10 py-16">
                 {/* Courses Row */}
+                <div className="glass-premium rounded-[2rem] p-6 md:p-8 mb-10 border border-border/60">
                 <RowSection title="Academic Classes" icon={BookOpen} isEmpty={courses.length === 0} isLoading={loading} scrollRef={courseRowRef}>
                     {courses.map(course => (
                         <motion.div 
@@ -172,8 +174,10 @@ export default function SearchResults() {
                         </motion.div>
                     ))}
                 </RowSection>
+                </div>
 
                 {/* Messages Row */}
+                <div className="glass-premium rounded-[2rem] p-6 md:p-8 border border-border/60">
                 <RowSection title="Global Communications" icon={MessageSquare} isEmpty={messages.length === 0} isLoading={loading} scrollRef={messageRowRef}>
                     {messages.map(msg => (
                         <motion.div 
@@ -211,6 +215,7 @@ export default function SearchResults() {
                         </motion.div>
                     ))}
                 </RowSection>
+                </div>
 
                 {/* Empty Global State */}
                 {!loading && courses.length === 0 && messages.length === 0 && (

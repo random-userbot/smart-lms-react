@@ -23,7 +23,7 @@ export function LandingHero() {
                 }}
             />
             
-            <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="hsla(252, 78%, 60%, 0.3)" />
+            <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="color-mix(in srgb, var(--color-primary) 42%, transparent)" />
 
             <div className="w-full max-w-[1400px] mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center px-6 md:px-10 py-12 lg:py-0 text-center lg:text-left">
                 {/* Left content */}
@@ -36,9 +36,9 @@ export function LandingHero() {
                     <motion.div 
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold mb-6 mx-auto lg:mx-0 w-fit border"
                         style={{
-                            background: 'hsla(252, 78%, 60%, 0.12)',
-                            borderColor: 'hsla(252, 78%, 60%, 0.25)',
-                            color: 'hsl(252, 78%, 75%)',
+                            background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
+                            borderColor: 'color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                            color: 'color-mix(in srgb, var(--color-accent) 78%, white)',
                         }}
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -55,7 +55,7 @@ export function LandingHero() {
                     >
                         Learn with <br /> 
                         <span className="text-transparent bg-clip-text" style={{
-                            backgroundImage: 'linear-gradient(135deg, hsl(252,78%,72%), hsl(252,78%,60%), hsl(217,91%,60%))',
+                            backgroundImage: 'linear-gradient(135deg, var(--color-primary-light), var(--color-primary), var(--color-accent))',
                         }}>
                             Immersive AI
                         </span>
@@ -63,7 +63,7 @@ export function LandingHero() {
                     
                     <motion.p 
                         className="text-lg md:text-xl max-w-xl mx-auto lg:mx-0 leading-relaxed mb-10"
-                        style={{ color: 'hsl(240, 20%, 75%)' }}
+                        style={{ color: 'color-mix(in srgb, white 72%, var(--color-accent) 28%)' }}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.4, duration: 0.6 }}
@@ -81,12 +81,12 @@ export function LandingHero() {
                         <Link to="/register" className="group inline-flex items-center gap-2 text-base px-7 py-3.5 rounded-xl font-semibold text-white transition-all hover:-translate-y-0.5"
                             style={{ 
                                 background: 'var(--color-accent)',
-                                boxShadow: '0 8px 24px hsla(252,78%,55%,0.35)',
+                                boxShadow: 'var(--shadow-accent)',
                             }}>
                             Get Started Free <ArrowRight className="group-hover:translate-x-1 transition-transform" size={18}/>
                         </Link>
                         <Link to="/login" className="inline-flex items-center gap-2 text-base px-7 py-3.5 rounded-xl font-semibold transition-all backdrop-blur-sm"
-                            style={{ color: 'hsl(240,20%,75%)', border: '1px solid hsla(240,20%,50%,0.3)' }}>
+                            style={{ color: 'color-mix(in srgb, white 70%, var(--color-accent) 30%)', border: '1px solid color-mix(in srgb, var(--color-primary-light) 34%, transparent)' }}>
                             Log in to Account
                         </Link>
                     </motion.div>
@@ -101,7 +101,7 @@ export function LandingHero() {
                 >
                     <div className="absolute inset-0 rounded-full mix-blend-screen -z-10"
                         style={{
-                            background: 'radial-gradient(circle at center, hsla(252,78%,60%,0.2) 0%, transparent 60%)',
+                            background: 'radial-gradient(circle at center, color-mix(in srgb, var(--color-primary) 24%, transparent) 0%, transparent 60%)',
                             filter: 'blur(60px)',
                             animation: 'spotlightPulse 4s ease-in-out infinite',
                         }}

@@ -9,6 +9,7 @@ import json
 import urllib.parse
 import urllib.request
 from app.config import settings
+from app.services.groq_fallback import AllModelsRateLimitedError, chat_completion_with_fallback
 
 
 QUIZ_GENERATION_PROMPT = """You are an educational quiz generator. Generate {num_questions} quiz questions from the following lecture content.
@@ -68,14 +69,25 @@ async def generate_quiz_questions(
             transcript=transcript,
         )
 
-        response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        model_chain = settings.groq_chat_models_for_task(
+            task="quiz_generation",
+            primary_model="llama-3.3-70b-versatile",
+        )
+
+        response, used_model = await chat_completion_with_fallback(
+            client,
+            primary_model=model_chain[0],
+            fallback_models=model_chain[1:],
             messages=[
                 {"role": "system", "content": "You are a precise educational quiz generator. Output ONLY a valid JSON array. Do not wrap in markdown or add conversational text."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.7,
             max_tokens=4000,
+            stream=False,
+            retries_per_model=settings.GROQ_MODEL_RETRIES_PER_MODEL,
+            retry_base_seconds=settings.GROQ_MODEL_RETRY_BASE_SECONDS,
+            retry_max_seconds=settings.GROQ_MODEL_RETRY_MAX_SECONDS,
         )
 
         content = response.choices[0].message.content.strip()
@@ -104,8 +116,13 @@ async def generate_quiz_questions(
 
         # Lightweight internet fact-checking for factual confidence signals.
         await _attach_fact_check(valid_questions)
+        if used_model != "llama-3.3-70b-versatile":
+            for q in valid_questions[:3]:
+                q["model_fallback_used"] = used_model
         return valid_questions
 
+    except AllModelsRateLimitedError:
+        raise
     except Exception as e:
         raise Exception(f"Quiz generation failed: {str(e)}")
 
@@ -154,14 +171,25 @@ Ensure the output format remains exactly the same JSON array of question objects
 ]
 """
 
-        response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        model_chain = settings.groq_chat_models_for_task(
+            task="quiz_refinement",
+            primary_model="llama-3.3-70b-versatile",
+        )
+
+        response, _ = await chat_completion_with_fallback(
+            client,
+            primary_model=model_chain[0],
+            fallback_models=model_chain[1:],
             messages=[
                 {"role": "system", "content": "You are a precise educational quiz generator. Output ONLY a valid JSON array. Do not wrap in markdown or add conversational text."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.7,
             max_tokens=4000,
+            stream=False,
+            retries_per_model=settings.GROQ_MODEL_RETRIES_PER_MODEL,
+            retry_base_seconds=settings.GROQ_MODEL_RETRY_BASE_SECONDS,
+            retry_max_seconds=settings.GROQ_MODEL_RETRY_MAX_SECONDS,
         )
 
         content = response.choices[0].message.content.strip()
@@ -190,6 +218,8 @@ Ensure the output format remains exactly the same JSON array of question objects
 
         return valid_questions
 
+    except AllModelsRateLimitedError:
+        raise
     except Exception as e:
         raise Exception(f"Quiz refinement failed: {str(e)}")
 

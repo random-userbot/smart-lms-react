@@ -25,6 +25,7 @@ import SearchResults from './pages/SearchResults';
 import AdminUsers from './pages/admin/UserManagement';
 import AdminTeachers from './pages/admin/TeacherOverview';
 import Messages from './pages/Messages';
+import GlobalProgressBar from './components/ui/GlobalProgressBar';
 import './index.css';
 
 function ProtectedRoute({ children, roles }) {
@@ -43,11 +44,14 @@ function AppLayout({ children, showSidebar = true }) {
   const { user } = useAuth();
   const hasSidebar = user && showSidebar;
   return (
-    <div className="min-h-screen bg-surface-alt flex flex-col">
+    <div className="min-h-screen bg-surface-alt flex flex-col relative overflow-hidden">
+      <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/3 -left-20 h-64 w-64 rounded-full bg-info/10 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
       <Navbar />
-      <div className={hasSidebar ? 'flex flex-1 overflow-hidden' : 'flex-1 flex flex-col'}>
+      <div className={hasSidebar ? 'flex flex-1 overflow-hidden relative z-10' : 'flex-1 flex flex-col relative z-10'}>
         {hasSidebar && <Sidebar />}
-        <main className={hasSidebar ? 'flex-1 min-w-0 overflow-y-auto w-full' : 'flex-1 w-full'}>
+        <main className={hasSidebar ? 'flex-1 min-w-0 overflow-y-auto w-full' : 'flex-1 w-full overflow-y-auto'}>
           {children}
         </main>
       </div>
@@ -73,7 +77,9 @@ function AppRoutes() {
   const location = useLocation();
 
   return (
-    <AnimatePresence mode="wait">
+    <>
+      <GlobalProgressBar />
+      <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         {/* Public */}
         <Route path="/" element={user ? <Navigate to="/dashboard" /> : <PageTransitionWrapper><Navbar /><Landing /></PageTransitionWrapper>} />
@@ -177,6 +183,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
+    </>
   );
 }
 

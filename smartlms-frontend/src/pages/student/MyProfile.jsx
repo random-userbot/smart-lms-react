@@ -55,7 +55,7 @@ export default function MyProfile() {
             const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = 'my-smartlms-data.json'; a.click();
+            a.href = url; a.download = 'my-smart-lms-data.json'; a.click();
             URL.revokeObjectURL(url);
             trackEvent('data_exported');
         } catch { }

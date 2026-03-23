@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     ThumbsUp, Star, Send, ArrowRight 
 } from 'lucide-react';
@@ -6,8 +6,8 @@ import { feedbackAPI, gamificationAPI } from '../../api/client';
 
 export default function FeedbackPhase({ lectureId, courseId, onComplete }) {
     const [form, setForm] = useState({
-        overall_rating: 0, content_quality: 0, teaching_clarity: 0, pacing: 0,
-        difficulty_level: 0, text: '', suggestions: '',
+        overall_rating: 0, content_quality: null, teaching_clarity: null, pacing: null,
+        difficulty_level: null, text: '', suggestions: '',
     });
     const [submitted, setSubmitted] = useState(false);
     const [nlpResult, setNlpResult] = useState(null);
@@ -15,18 +15,53 @@ export default function FeedbackPhase({ lectureId, courseId, onComplete }) {
     const handleSubmit = async () => {
         if (form.overall_rating === 0) return;
         try {
-            const res = await feedbackAPI.submit({
+            const payload = {
                 lecture_id: lectureId,
                 course_id: courseId,
-                ...form,
+                overall_rating: form.overall_rating,
+                // Backend expects content_quality; UI captures pacing separately.
+                // Use pacing as a fallback so the request stays valid.
+                content_quality: form.content_quality ?? form.pacing,
+                teaching_clarity: form.teaching_clarity,
+                difficulty_level: form.difficulty_level,
+                text: form.text,
+                suggestions: form.suggestions,
+            };
+
+            // Remove null/undefined so backend optional validators don't reject defaults.
+            Object.keys(payload).forEach((k) => {
+                if (payload[k] == null || payload[k] === '') {
+                    delete payload[k];
+                }
             });
-            try { await gamificationAPI.awardPoints('feedback', 10); } catch (e) { console.warn("Feedback score award failed:", e); }
+
+            const res = await feedbackAPI.submit({
+                ...payload,
+            });
+            console.log('✅ Feedback submitted successfully:', res.data);
+            try { 
+                await gamificationAPI.awardPoints('feedback', 10); 
+                console.log('✅ Feedback points awarded');
+            } catch (e) { 
+                console.warn("Feedback score award failed:", e); 
+            }
             setNlpResult(res.data);
             setSubmitted(true);
         } catch (err) {
-            console.error('Feedback error:', err);
+            console.error('❌ Feedback error:', err);
         }
     };
+
+    // Auto-navigate to session complete after showing feedback result
+    useEffect(() => {
+        if (submitted && nlpResult) {
+            const timer = setTimeout(() => {
+                console.log('✅ Session complete, moving to summary...');
+                onComplete?.();
+            }, 3000); // Show feedback analysis for 3 seconds
+            return () => clearTimeout(timer);
+        }
+    }, [submitted, nlpResult, onComplete]);
 
     const sentimentColors = {
         positive: { bg: 'bg-success-light border-success/20', text: 'text-success', icon: '😊', label: 'Positive' },
@@ -94,7 +129,7 @@ export default function FeedbackPhase({ lectureId, courseId, onComplete }) {
                 )}
 
                 <button className="btn btn-primary btn-lg shadow-accent w-full py-5 text-xl" onClick={onComplete}>
-                    Continue to Dashboard <ArrowRight size={24} className="ml-2" />
+                    Back to Course Page <ArrowRight size={24} className="ml-2" />
                 </button>
             </div>
         );

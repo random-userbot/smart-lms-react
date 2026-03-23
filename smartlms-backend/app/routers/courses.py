@@ -25,6 +25,31 @@ from app.services.debug_logger import debug_logger
 router = APIRouter(prefix="/api/courses", tags=["Courses"])
 
 
+async def _get_course_aggregate_counts(db: AsyncSession, course_ids: List[str]):
+    """Bulk fetch lecture and active enrollment counts per course."""
+    if not course_ids:
+        return {}, {}
+
+    lecture_rows = await db.execute(
+        select(Lecture.course_id, func.count(Lecture.id))
+        .where(Lecture.course_id.in_(course_ids))
+        .group_by(Lecture.course_id)
+    )
+    lecture_counts = {course_id: count for course_id, count in lecture_rows.all()}
+
+    enrollment_rows = await db.execute(
+        select(Enrollment.course_id, func.count(Enrollment.id))
+        .where(
+            Enrollment.course_id.in_(course_ids),
+            Enrollment.status == EnrollmentStatus.ACTIVE,
+        )
+        .group_by(Enrollment.course_id)
+    )
+    enrollment_counts = {course_id: count for course_id, count in enrollment_rows.all()}
+
+    return lecture_counts, enrollment_counts
+
+
 # ─── Schemas ─────────────────────────────────────────────
 
 class CourseCreate(BaseModel):
@@ -143,23 +168,14 @@ async def list_courses(
     result = await db.execute(query.order_by(Course.created_at.desc()))
     courses = result.scalars().all()
 
+    course_ids = [course.id for course in courses]
+    lecture_counts, enrollment_counts = await _get_course_aggregate_counts(db, course_ids)
+
     # Build responses with counts
     responses = []
     for course in courses:
-        # Get lecture count
-        lec_result = await db.execute(
-            select(func.count()).select_from(Lecture).where(Lecture.course_id == course.id)
-        )
-        lecture_count = lec_result.scalar() or 0
-
-        # Get student count
-        enr_result = await db.execute(
-            select(func.count()).select_from(Enrollment).where(
-                Enrollment.course_id == course.id,
-                Enrollment.status == EnrollmentStatus.ACTIVE
-            )
-        )
-        student_count = enr_result.scalar() or 0
+        lecture_count = lecture_counts.get(course.id, 0)
+        student_count = enrollment_counts.get(course.id, 0)
 
         responses.append(CourseResponse(
             id=course.id,
@@ -192,19 +208,9 @@ async def get_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    # Get counts
-    lec_result = await db.execute(
-        select(func.count()).select_from(Lecture).where(Lecture.course_id == course.id)
-    )
-    lecture_count = lec_result.scalar() or 0
-
-    enr_result = await db.execute(
-        select(func.count()).select_from(Enrollment).where(
-            Enrollment.course_id == course.id,
-            Enrollment.status == EnrollmentStatus.ACTIVE
-        )
-    )
-    student_count = enr_result.scalar() or 0
+    lecture_counts, enrollment_counts = await _get_course_aggregate_counts(db, [course.id])
+    lecture_count = lecture_counts.get(course.id, 0)
+    student_count = enrollment_counts.get(course.id, 0)
 
     return CourseResponse(
         id=course.id,

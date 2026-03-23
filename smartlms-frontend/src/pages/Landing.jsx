@@ -171,7 +171,7 @@ export default function Landing() {
                 <section className="w-full py-24 px-6 text-white flex justify-center relative overflow-hidden"
                     style={{ background: 'var(--gradient-hero)' }}>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[150px]"
-                        style={{ background: 'hsla(252,78%,60%,0.2)' }} />
+                        style={{ background: 'color-mix(in srgb, var(--color-primary) 24%, transparent)' }} />
                     <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeInUp}
                         className="w-full max-w-4xl text-center relative z-10 flex flex-col items-center"
                     >
@@ -189,9 +189,9 @@ export default function Landing() {
                 </section>
 
                 {/* Footer */}
-                <footer className="w-full py-8 px-6 text-center text-sm" style={{ background: 'hsl(240,30%,4%)', color: 'hsl(240,10%,50%)' }}>
+                <footer className="w-full py-8 px-6 text-center text-sm" style={{ background: 'hsl(209, 61%, 9%)', color: 'hsl(203, 22%, 68%)' }}>
                     <p className="font-medium tracking-wide">
-                        <span className="text-white font-bold mr-2">Smart LMS</span> v2.0 — Built for Smart Engineering Campus · Thesis Project 2026
+                        <span className="text-white font-bold mr-2">Smart LMS</span> v2.0 — AI-powered learning, analytics, and engagement platform
                     </p>
                 </footer>
             </div>

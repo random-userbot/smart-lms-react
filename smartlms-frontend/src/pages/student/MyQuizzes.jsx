@@ -52,13 +52,18 @@ export default function MyQuizzes() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto px-6 py-10">
-            <div className="mb-8">
-                <h1 className="text-4xl font-black text-text tracking-tight">My Quizzes</h1>
-                <p className="text-text-secondary mt-2">Attempt quizzes from all your enrolled courses.</p>
+        <div className="min-h-[calc(100vh-64px)] bg-surface-alt py-10 md:py-14 relative overflow-hidden">
+            <div className="pointer-events-none absolute -left-20 top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 top-52 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+
+            <div className="max-w-7xl mx-auto px-6 space-y-8 relative z-10">
+            <div className="rounded-4xl bg-linear-to-br from-primary to-accent p-8 text-white relative overflow-hidden border border-white/20 shadow-lg">
+                <div className="absolute -right-6 -top-6 opacity-15"><Trophy size={140} /></div>
+                <h1 className="text-4xl md:text-5xl font-black tracking-tight">My Quizzes</h1>
+                <p className="text-white/85 mt-2 font-medium text-lg">Attempt quizzes from all your enrolled courses.</p>
             </div>
 
-            <div className="bg-surface border border-border rounded-2xl p-4 mb-8 flex items-center gap-3">
+            <div className="glass-premium rounded-3xl p-4 flex items-center gap-3 shadow-sm border border-border/60">
                 <Search size={18} className="text-text-muted" />
                 <input
                     value={query}
@@ -69,25 +74,25 @@ export default function MyQuizzes() {
             </div>
 
             {error && (
-                <div className="mb-6 p-4 rounded-xl bg-danger-light text-danger border border-danger/30 font-semibold">
+                <div className="p-4 rounded-xl bg-danger-light text-danger font-semibold">
                     {error}
                 </div>
             )}
 
             {filtered.length === 0 ? (
-                <div className="bg-surface border border-border rounded-3xl p-10 text-center text-text-secondary font-semibold">
+                <div className="bg-surface rounded-3xl p-10 text-center text-text-secondary font-semibold shadow-sm">
                     No quizzes found.
                 </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {filtered.map((quiz) => (
-                        <article key={quiz.id} className="bg-surface border border-border rounded-3xl p-6 shadow-sm">
+                        <article key={quiz.id} className="glass-premium rounded-4xl p-6 shadow-sm border border-border/60 hover:border-accent/25 hover:shadow-md transition-all">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
                                     <h2 className="text-2xl font-black text-text leading-tight">{quiz.title}</h2>
                                     <p className="text-text-secondary mt-2 font-semibold">{quiz.course_title} • {quiz.lecture_title}</p>
                                 </div>
-                                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-accent-light text-accent border border-accent/20">
+                                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-accent-light text-accent">
                                     {quiz.questions?.length || 0} Qs
                                 </span>
                             </div>
@@ -100,7 +105,7 @@ export default function MyQuizzes() {
 
                             <button
                                 onClick={() => openQuiz(quiz)}
-                                className="mt-6 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-white bg-primary hover:bg-primary-light transition"
+                                className="mt-6 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full font-bold text-white bg-linear-to-r from-primary to-accent hover:brightness-110 transition"
                             >
                                 <PlayCircle size={18} />
                                 Attempt Quiz
@@ -109,13 +114,14 @@ export default function MyQuizzes() {
                     ))}
                 </div>
             )}
+            </div>
         </div>
     );
 }
 
 function Stat({ icon, label, value }) {
     return (
-        <div className="rounded-xl border border-border bg-surface-alt p-3">
+        <div className="rounded-xl bg-surface-alt p-3">
             <div className="flex items-center gap-2 text-text-muted text-xs uppercase font-bold tracking-wider">{icon}{label}</div>
             <div className="mt-1 text-lg font-black text-text">{value}</div>
         </div>

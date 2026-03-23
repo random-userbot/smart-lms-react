@@ -118,6 +118,7 @@ class ExportModelRegistry:
 
             if "FAILED" in folder.name.upper():
                 notes = "Marked failed during export"
+                status = "error"
             if "BIASED" in folder.name.upper():
                 notes = "Marked biased in export notes"
 
@@ -178,26 +179,40 @@ class ExportModelRegistry:
         ]
 
     def _feature_to_legacy_vector(self, feature: Dict[str, Any]) -> np.ndarray:
-        ear_left = float(feature.get("eye_aspect_ratio_left", 0.0))
-        ear_right = float(feature.get("eye_aspect_ratio_right", 0.0))
+        def pick(keys, default=0.0):
+            for k in keys:
+                v = feature.get(k, None)
+                if v is not None:
+                    return v
+            return default
+
+        ear_left = float(pick(["eye_aspect_ratio_left"], 0.0))
+        ear_right = float(pick(["eye_aspect_ratio_right"], 0.0))
         eye_avg = (ear_left + ear_right) / 2.0
+
+        gaze_score = feature.get("gaze_score", None)
+        if gaze_score is None:
+            gx = float(pick(["gaze_angle_x"], 0.0))
+            gy = float(pick(["gaze_angle_y"], 0.0))
+            gaze_score = max(0.0, 1.0 - (np.sqrt(gx * gx + gy * gy) / 30.0))
+
         vals = {
-            "au01_inner_brow_raise": float(feature.get("au01_inner_brow_raise", 0.0)),
-            "au02_outer_brow_raise": float(feature.get("au02_outer_brow_raise", 0.0)),
-            "au04_brow_lowerer": float(feature.get("au04_brow_lowerer", 0.0)),
-            "au06_cheek_raiser": float(feature.get("au06_cheek_raiser", 0.0)),
-            "au12_lip_corner_puller": float(feature.get("au12_lip_corner_puller", 0.0)),
-            "au15_lip_corner_depressor": float(feature.get("au15_lip_corner_depressor", 0.0)),
-            "au25_lips_part": float(feature.get("au25_lips_part", 0.0)),
-            "au26_jaw_drop": float(feature.get("au26_jaw_drop", 0.0)),
-            "gaze_score": float(feature.get("gaze_score", 0.0)),
-            "head_pose_yaw": float(feature.get("head_pose_yaw", 0.0)),
-            "head_pose_pitch": float(feature.get("head_pose_pitch", 0.0)),
-            "head_pose_roll": float(feature.get("head_pose_roll", 0.0)),
+            "au01_inner_brow_raise": float(pick(["au01_inner_brow_raise", "AU01_r"], 0.0)),
+            "au02_outer_brow_raise": float(pick(["au02_outer_brow_raise", "AU02_r"], 0.0)),
+            "au04_brow_lowerer": float(pick(["au04_brow_lowerer", "AU04_r"], 0.0)),
+            "au06_cheek_raiser": float(pick(["au06_cheek_raiser", "AU06_r"], 0.0)),
+            "au12_lip_corner_puller": float(pick(["au12_lip_corner_puller", "AU12_r"], 0.0)),
+            "au15_lip_corner_depressor": float(pick(["au15_lip_corner_depressor", "AU15_r"], 0.0)),
+            "au25_lips_part": float(pick(["au25_lips_part", "AU25_r"], 0.0)),
+            "au26_jaw_drop": float(pick(["au26_jaw_drop", "AU26_r"], 0.0)),
+            "gaze_score": float(gaze_score),
+            "head_pose_yaw": float(pick(["head_pose_yaw", "pose_Ry"], 0.0)),
+            "head_pose_pitch": float(pick(["head_pose_pitch", "pose_Rx"], 0.0)),
+            "head_pose_roll": float(pick(["head_pose_roll", "pose_Rz"], 0.0)),
             "head_pose_stability": float(feature.get("head_pose_stability", 0.0)),
             "eye_aspect_ratio": eye_avg,
-            "blink_rate": float(feature.get("blink_rate", 0.0)),
-            "mouth_openness": float(feature.get("mouth_openness", 0.0)),
+            "blink_rate": float(pick(["blink_rate", "au45_blink", "AU45_r"], 0.0)),
+            "mouth_openness": float(pick(["mouth_openness", "au25_lips_part", "AU25_r"], 0.0)),
             "keyboard_activity_pct": 1.0 if feature.get("keyboard_active", False) else 0.0,
             "mouse_activity_pct": 1.0 if feature.get("mouse_active", False) else 0.0,
             "tab_visible_pct": 1.0 if feature.get("tab_visible", True) else 0.0,
@@ -305,7 +320,43 @@ class ExportModelRegistry:
         if not model_file.exists():
             raise FileNotFoundError(f"Model file not found: {model_file}")
 
-        model = loader.load_model_with_custom_layers(str(model_file), compile=False)
+        try:
+            model = loader.load_model_with_custom_layers(str(model_file), compile=False)
+        except Exception as exc:
+            msg = str(exc)
+            lambda_blocked = "Lambda" in msg or "safe_mode=False" in msg or "unsafe_deserialization" in msg
+            if not lambda_blocked:
+                raise
+
+            # Trusted local artifacts fallback: force unsafe Lambda deserialization for legacy exports.
+            custom_objects = {
+                "PositionalEncoding": getattr(loader, "PositionalEncoding", None),
+                "AttentionLayer": getattr(loader, "AttentionLayer", None),
+                "MultiHeadAttentionLayer": getattr(loader, "MultiHeadAttentionLayer", None),
+                "TransformerBlock": getattr(loader, "TransformerBlock", None),
+            }
+            custom_objects = {k: v for k, v in custom_objects.items() if v is not None}
+
+            try:
+                keras.config.enable_unsafe_deserialization()
+            except Exception:
+                pass
+
+            try:
+                model = keras.models.load_model(
+                    str(model_file),
+                    custom_objects=custom_objects,
+                    compile=False,
+                    safe_mode=False,
+                )
+            except TypeError:
+                # Older TF/Keras versions may not expose safe_mode.
+                model = keras.models.load_model(
+                    str(model_file),
+                    custom_objects=custom_objects,
+                    compile=False,
+                )
+
         self._loaded_models[model_id] = model
         return model
 

@@ -18,9 +18,17 @@ function LiveEngagementTestPage() {
 
   const [modelInfo, setModelInfo] = useState(null);
   const [runtimeModels, setRuntimeModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsDebug, setModelsDebug] = useState({
+    lastLoadedAt: null,
+    count: 0,
+    error: '',
+  });
   const [selectedModelId, setSelectedModelId] = useState('builtin::xgboost');
   const [selectedModelOutput, setSelectedModelOutput] = useState(null);
   const [liveResult, setLiveResult] = useState(null);
+  const [ensembleResults, setEnsembleResults] = useState(null);
+  const [ensembleLog, setEnsembleLog] = useState([]);
   const [latestFeature, setLatestFeature] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
   const [playerError, setPlayerError] = useState(false);
@@ -31,29 +39,268 @@ function LiveEngagementTestPage() {
   const sessionIdRef = useRef(`live_test_${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const lectureIdRef = useRef(lectureId);
   const isRunningRef = useRef(isRunning);
+  const submitInFlightRef = useRef(false);
+  const ensembleInFlightRef = useRef(false);
+  const cachedModelsRef = useRef([]);
+  const consecutiveFailuresRef = useRef(0);
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const appendEnsembleLog = useCallback((message) => {
+    const ts = new Date().toLocaleTimeString();
+    const line = `[${ts}] ${message}`;
+    setEnsembleLog((prev) => [line, ...prev].slice(0, 80));
+    console.log(`[ensemble] ${line}`);
+  }, []);
+
+  const normalizeModelScores = useCallback((modelResult) => {
+    const payload = modelResult?.output || modelResult;
+    const out = payload?.output || payload;
+
+    if (out && typeof out.engagement === 'number') {
+      return {
+        engagement: Number(out.engagement || 0),
+        boredom: Number(out.boredom || 0),
+        confusion: Number(out.confusion || 0),
+        frustration: Number(out.frustration || 0),
+      };
+    }
+
+    // Export models return class probabilities per dimension.
+    const dims = out?.dimensions;
+    if (dims && typeof dims === 'object') {
+      const toPercent = (dim) => {
+        const probs = dim?.probabilities;
+        if (!Array.isArray(probs) || probs.length === 0) return 0;
+        const maxLevel = Math.max(1, probs.length - 1);
+        const weighted = probs.reduce((sum, p, idx) => sum + (Number(p) || 0) * idx, 0);
+        return Math.round((weighted / maxLevel) * 100);
+      };
+
+      return {
+        engagement: toPercent(dims.engagement),
+        boredom: toPercent(dims.boredom),
+        confusion: toPercent(dims.confusion),
+        frustration: toPercent(dims.frustration),
+      };
+    }
+
+    return {
+      engagement: Number(out?.overall_proxy || 0),
+      boredom: 0,
+      confusion: 0,
+      frustration: 0,
+    };
+  }, []);
+
+  const loadRuntimeModels = useCallback(async () => {
+    setModelsLoading(true);
+    setModelsDebug((prev) => ({ ...prev, error: '' }));
+    try {
+      const res = await engagementAPI.listModels();
+      const models = res?.data?.models || [];
+      console.log('Loaded models:', res?.data, models);
+      if (!Array.isArray(models) || models.length === 0) {
+        setRuntimeModels([]);
+        setSelectedModelId('builtin::xgboost');
+        setModelsDebug({
+          lastLoadedAt: new Date().toISOString(),
+          count: 0,
+          error: 'Model list returned empty array',
+        });
+        return [];
+      }
+      setRuntimeModels(models);
+      cachedModelsRef.current = models;
+      const firstAvailable = models.find((m) => m.status === 'available');
+      if (firstAvailable) {
+        setSelectedModelId(firstAvailable.model_id);
+      } else {
+        setSelectedModelId(models[0].model_id);
+      }
+      setModelsDebug({
+        lastLoadedAt: new Date().toISOString(),
+        count: models.length,
+        error: '',
+      });
+      return models;
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Unknown models error';
+      console.error('Failed to fetch models:', err);
+      setRuntimeModels([]);
+      setSelectedModelId('builtin::xgboost');
+      setModelsDebug({
+        lastLoadedAt: new Date().toISOString(),
+        count: 0,
+        error: detail,
+      });
+      return [];
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    engagementAPI.getModelInfo().then((res) => setModelInfo(res.data)).catch(() => setModelInfo(null));
-    engagementAPI.listModels().then((res) => {
-      const models = res?.data?.models || [];
-      setRuntimeModels(models);
-      const firstAvailable = models.find((m) => m.status === 'available');
-      if (firstAvailable) setSelectedModelId(firstAvailable.model_id);
-    }).catch(() => setRuntimeModels([]));
-  }, []);
+    engagementAPI.getModelInfo().then((res) => setModelInfo(res.data)).catch((err) => {
+      console.error('Failed to fetch model info:', err);
+      setModelInfo(null);
+    });
+    loadRuntimeModels();
+  }, [loadRuntimeModels]);
 
   const runSelectedModelInference = async (batchOverride = null) => {
     const batch = batchOverride || featureBufferRef.current.slice();
-    if (!batch.length || !selectedModelId) return;
+    if (!batch.length || !selectedModelId) {
+      console.warn('Cannot run inference: batch empty or no model selected');
+      return;
+    }
     try {
+      console.log(`Inferencing with model ${selectedModelId}...`);
       const res = await engagementAPI.inferModel({
         model_id: selectedModelId,
         features: batch,
       });
+      console.log('Selected model output:', res.data);
       setSelectedModelOutput(res.data);
+      setStatus(`Model "${selectedModelId}" inference complete`);
     } catch (e) {
-      const msg = e?.response?.data?.detail || 'Selected model inference failed.';
-      setError(msg);
+      const msg = e?.response?.data?.detail || e?.message || 'Selected model inference failed.';
+      console.error('Model inference error:', msg);
+      setSelectedModelOutput(null);
+      setError(`Model inference failed: ${msg}`);
+    }
+  };
+
+  const runEnsembleInference = async (batchOverride = null) => {
+    const buffered = featureBufferRef.current.slice();
+    const fallbackLatest = latestFeature ? [latestFeature] : [];
+    const batch = batchOverride || (buffered.length ? buffered : fallbackLatest);
+
+    if (ensembleInFlightRef.current) {
+      appendEnsembleLog('Skipped ensemble tick: previous run still in progress');
+      return;
+    }
+
+    let modelsToRun = runtimeModels;
+    if (modelsToRun.length === 0) {
+      appendEnsembleLog('No runtime models in state, reloading models from backend...');
+      modelsToRun = await loadRuntimeModels();
+    }
+    if (modelsToRun.length === 0 && cachedModelsRef.current.length > 0) {
+      modelsToRun = cachedModelsRef.current;
+      appendEnsembleLog(`Using cached model catalog (${modelsToRun.length} models)`);
+    }
+    if (modelsToRun.length === 0) {
+      setError('No runtime models available. Use Reload Models and check diagnostics below.');
+      setStatus('Ensemble warning: no models');
+      appendEnsembleLog('No runtime models available from backend after reload');
+      return;
+    }
+    if (!batch.length) {
+      setError('No features available yet. Turn on camera and wait for feature capture.');
+      setStatus('Ensemble waiting for features');
+      appendEnsembleLog('Cannot run ensemble: no captured features yet');
+      return;
+    }
+
+    try {
+      ensembleInFlightRef.current = true;
+      setError('');
+      setEnsembleResults(null);
+      setStatus('Running ensemble voting across all models...');
+      appendEnsembleLog(`Starting ensemble run with ${modelsToRun.length} models and ${batch.length} features`);
+      const results = {};
+      
+      // Run inference on each available model
+      for (const model of modelsToRun) {
+        const modelNotes = String(model?.notes || '').toLowerCase();
+        if (model.status === 'error') {
+          appendEnsembleLog(`Skipping ${model.model_id} (status=error)`);
+          continue;
+        }
+        if (modelNotes.includes('biased')) {
+          appendEnsembleLog(`Skipping ${model.model_id} (biased artifact)`);
+          continue;
+        }
+        try {
+          appendEnsembleLog(`Running ${model.model_id}`);
+          const res = await engagementAPI.inferModel({
+            model_id: model.model_id,
+            features: batch,
+          });
+          const normalizedScores = normalizeModelScores(res.data);
+          const zeroSignal = ['engagement', 'boredom', 'confusion', 'frustration']
+            .every((k) => Number(normalizedScores?.[k] || 0) === 0);
+          if (zeroSignal) {
+            appendEnsembleLog(`Skipping ${model.model_id} (zero-signal output)`);
+            continue;
+          }
+          results[model.model_id] = {
+            name: model.name,
+            output: res.data,
+            normalized_scores: normalizedScores,
+            family: model.family,
+            status: model.status,
+          };
+          appendEnsembleLog(`Success ${model.model_id} -> E:${normalizedScores.engagement}% B:${normalizedScores.boredom}% C:${normalizedScores.confusion}% F:${normalizedScores.frustration}%`);
+        } catch (err) {
+          const detail = err?.response?.data?.detail || err.message;
+          appendEnsembleLog(`Failed ${model.model_id} -> ${detail}`);
+          results[model.model_id] = {
+            name: model.name,
+            error: detail,
+            family: model.family,
+            status: 'error',
+          };
+        }
+      }
+      
+      // Compute ensemble voting
+      const successResults = Object.entries(results).filter(([, r]) => !r.error);
+      if (successResults.length > 0) {
+        const votes = {
+          engagement: [],
+          boredom: [],
+          confusion: [],
+          frustration: [],
+        };
+        
+        successResults.forEach(([, result]) => {
+          const scores = result.normalized_scores;
+          if (scores) {
+            votes.engagement.push(Number(scores.engagement || 0));
+            votes.boredom.push(Number(scores.boredom || 0));
+            votes.confusion.push(Number(scores.confusion || 0));
+            votes.frustration.push(Number(scores.frustration || 0));
+          }
+        });
+        
+        const avg = (arr) => arr.length > 0 ? (arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+        setEnsembleResults({
+          all_results: results,
+          consensus: {
+            engagement: Math.round(avg(votes.engagement)),
+            boredom: Math.round(avg(votes.boredom)),
+            confusion: Math.round(avg(votes.confusion)),
+            frustration: Math.round(avg(votes.frustration)),
+          },
+          model_count: successResults.length,
+          timestamp: new Date().toISOString(),
+        });
+        setStatus(`Ensemble voting complete (${successResults.length} models)`);
+        appendEnsembleLog(`Ensemble complete (${successResults.length} successful models)`);
+      } else {
+        setStatus('Ensemble warning: no successful outputs this tick');
+        appendEnsembleLog('No successful model outputs for ensemble');
+      }
+    } catch (e) {
+      const detail = e?.response?.data?.detail || e?.message || 'Unknown error';
+      console.error('Ensemble error:', detail);
+      setError(`Ensemble warning: ${detail}`);
+      setStatus('Ensemble warning');
+      appendEnsembleLog(`Ensemble failed: ${detail}`);
+    } finally {
+      ensembleInFlightRef.current = false;
     }
   };
 
@@ -121,15 +368,22 @@ function LiveEngagementTestPage() {
   }, []);
 
   const submitBatch = async () => {
+    if (submitInFlightRef.current) {
+      appendEnsembleLog('Skipped submit tick: previous submit still in progress');
+      return;
+    }
     if (!lectureId) {
       setError('Please provide a valid lecture ID before starting analysis.');
       return;
     }
 
-    const batch = featureBufferRef.current.slice();
+    const buffered = featureBufferRef.current.slice();
+    const fallbackLatest = latestFeature ? [latestFeature] : [];
+    const batch = buffered.length ? buffered : fallbackLatest;
     if (!batch.length) return;
 
     try {
+      submitInFlightRef.current = true;
       setStatus('Submitting live batch...');
       const watchDuration = Math.max(0, Math.floor(playedSecondsRef.current || ((Date.now() - startedAtRef.current) / 1000)));
       const res = await engagementAPI.submit({
@@ -145,14 +399,27 @@ function LiveEngagementTestPage() {
         total_duration: 600,
       });
       setLiveResult(res.data);
+      appendEnsembleLog(`Submit API model: ${res?.data?.model_type || 'unknown'} | confidence=${Math.round((Number(res?.data?.confidence || 0)) * 100)}% | ensemble_models=${Number(res?.data?.ensemble_model_count || 0)}`);
       await runSelectedModelInference(batch);
+      await runEnsembleInference(batch);
       featureBufferRef.current = [];
+      consecutiveFailuresRef.current = 0;
       setStatus('Live model output updated');
       fetchHistory();
     } catch (e) {
       const msg = e?.response?.data?.detail || 'Failed to submit live features. Ensure you are logged in and lecture ID exists.';
       setError(msg);
-      setStatus('Submission failed');
+      consecutiveFailuresRef.current += 1;
+      setStatus(`Submission warning (${consecutiveFailuresRef.current})`);
+      appendEnsembleLog(`Submit warning: ${msg}`);
+      if (consecutiveFailuresRef.current >= 3) {
+        appendEnsembleLog('Auto-recovery: reloading runtime models after repeated submit warnings');
+        await loadRuntimeModels();
+      }
+      // Continue running ensemble locally even if submit fails.
+      await runEnsembleInference(batch);
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
@@ -163,6 +430,16 @@ function LiveEngagementTestPage() {
     }, 8000);
     return () => clearInterval(id);
   }, [isRunning, lectureId]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = setInterval(() => {
+      if (runtimeModels.length === 0) {
+        loadRuntimeModels();
+      }
+    }, 15000);
+    return () => clearInterval(id);
+  }, [isRunning, runtimeModels.length, loadRuntimeModels]);
 
   const start = () => {
     setError('');
@@ -176,6 +453,8 @@ function LiveEngagementTestPage() {
     startedAtRef.current = Date.now();
     setLiveResult(null);
     setSelectedModelOutput(null);
+    setEnsembleResults(null);
+    setEnsembleLog([]);
     setIsRunning(true);
     setStatus('Collecting camera features...');
   };
@@ -343,14 +622,48 @@ function LiveEngagementTestPage() {
             <button onClick={stop} style={btn('#dc2626')}>Stop</button>
           )}
           <label style={{ fontSize: 13, fontWeight: 800, color: '#0f2b4d' }}>Model</label>
-          <select value={selectedModelId} onChange={(e) => setSelectedModelId(e.target.value)} style={{ ...inputStyle, minWidth: 280 }}>
-            {runtimeModels.map((m) => (
-              <option key={m.model_id} value={m.model_id}>{m.name} [{m.status}]</option>
-            ))}
+          <select 
+            value={selectedModelId} 
+            onChange={(e) => setSelectedModelId(e.target.value)} 
+            style={{ ...inputStyle, minWidth: 320 }}
+            disabled={runtimeModels.length === 0}
+          >
+            {runtimeModels.length > 0 ? (
+              <>
+                <optgroup label="Built-in Models">
+                  {runtimeModels.filter(m => m.family === 'xgboost_hybrid').map((m) => (
+                    <option key={m.model_id} value={m.model_id}>
+                      {m.name} [{m.status}]
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Export Keras Models">
+                  {runtimeModels.filter(m => m.family === 'export_keras').map((m) => (
+                    <option key={m.model_id} value={m.model_id}>
+                      {m.name} [{m.status}] {m.recommended ? '⭐' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              <>
+                <option value="builtin::xgboost">Built-in XGBoost (loading...)</option>
+              </>
+            )}
           </select>
           <button onClick={() => runSelectedModelInference()} style={btn('#0f766e')}>Run Selected Model</button>
+          <button onClick={() => runEnsembleInference()} style={btn('#9333ea')} title="Run ensemble voting across all available models">
+            🗳️ Ensemble Voting
+          </button>
+          <button onClick={() => loadRuntimeModels()} style={btn('#1d4ed8')} disabled={modelsLoading}>
+            {modelsLoading ? 'Reloading Models...' : 'Reload Models'}
+          </button>
         </div>
         <div style={{ marginTop: 10, fontSize: 13, color: '#334155', fontWeight: 600 }}>Status: {status}</div>
+        <div style={{ marginTop: 6, fontSize: 12, color: '#475569', fontWeight: 600 }}>
+          API: {API_BASE_URL} | Models Loaded: {modelsDebug.count} | Last Load: {modelsDebug.lastLoadedAt ? new Date(modelsDebug.lastLoadedAt).toLocaleTimeString() : 'never'}
+        </div>
+        {modelsDebug.error && <div style={{ marginTop: 4, color: '#b45309', fontSize: 12, fontWeight: 700 }}>Models Debug: {modelsDebug.error}</div>}
         {error && <div style={{ marginTop: 8, color: '#b91c1c', fontSize: 13, fontWeight: 700 }}>{error}</div>}
       </section>
 
@@ -382,6 +695,11 @@ function LiveEngagementTestPage() {
               onError={() => {
                 setPlayerError(true);
                 setPlaying(false);
+              }}
+              onEnded={() => {
+                setPlaying(false);
+                appendEnsembleLog('Lecture ended, stopping live analysis');
+                stop();
               }}
               config={{
                 youtube: {
@@ -462,6 +780,14 @@ function LiveEngagementTestPage() {
           <div style={{ fontWeight: 700 }}>{liveResult?.model_type || modelInfo?.model_type || 'N/A'}</div>
           <div style={{ color: '#94a3b8', fontSize: 12 }}>{modelInfo?.description || 'Model info unavailable'}</div>
         </Card>
+        <Card title="Hybrid Exports Used">
+          <div style={{ fontWeight: 700 }}>{Number(liveResult?.ensemble_model_count || 0)}</div>
+          <div style={{ color: '#94a3b8', fontSize: 12 }}>Models blended in submit scoring</div>
+        </Card>
+        <Card title="Model Confidence">
+          <div style={{ fontWeight: 700 }}>{Math.round((Number(liveResult?.confidence || 0)) * 100)}%</div>
+          <div style={{ color: '#94a3b8', fontSize: 12 }}>Backend confidence proxy</div>
+        </Card>
         <Card title="Selected Model">
           <div style={{ fontWeight: 700 }}>{selectedModelId || 'N/A'}</div>
           <div style={{ color: '#94a3b8', fontSize: 12 }}>Runtime selectable model output</div>
@@ -517,6 +843,100 @@ function LiveEngagementTestPage() {
         <h2 style={h2}>Selected Model Output</h2>
         <pre style={{ margin: 0, color: '#0f172a', fontSize: 12, whiteSpace: 'pre-wrap', background: 'rgba(255,255,255,0.9)', borderRadius: 10, border: '1px solid #cbd5e1', padding: 12 }}>
           {JSON.stringify(selectedModelOutput || {}, null, 2)}
+        </pre>
+      </section>
+
+      {ensembleResults && (
+        <section style={panelStyle}>
+          <h2 style={h2}>🗳️ Ensemble Voting Results</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <div style={{ borderRadius: 10, border: '2px solid #8b5cf6', padding: 16, background: 'rgba(139, 92, 246, 0.05)' }}>
+              <div style={{ fontSize: 11, color: '#6b21a8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Consensus Engagement</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#7c3aed', marginBottom: 4 }}>{ensembleResults.consensus.engagement}%</div>
+              <div style={{ fontSize: 13, color: '#a78bfa' }}>Voted by {ensembleResults.model_count} models</div>
+            </div>
+            <div style={{ borderRadius: 10, border: '2px solid #ec4899', padding: 16, background: 'rgba(236, 72, 153, 0.05)' }}>
+              <div style={{ fontSize: 11, color: '#831843', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Consensus Boredom</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#db2777', marginBottom: 4 }}>{ensembleResults.consensus.boredom}%</div>
+              <div style={{ fontSize: 13, color: '#f472b6' }}>Voted by {ensembleResults.model_count} models</div>
+            </div>
+            <div style={{ borderRadius: 10, border: '2px solid #f59e0b', padding: 16, background: 'rgba(245, 158, 11, 0.05)' }}>
+              <div style={{ fontSize: 11, color: '#92400e', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Consensus Confusion</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#d97706', marginBottom: 4 }}>{ensembleResults.consensus.confusion}%</div>
+              <div style={{ fontSize: 13, color: '#fbbf24' }}>Voted by {ensembleResults.model_count} models</div>
+            </div>
+            <div style={{ borderRadius: 10, border: '2px solid #ef4444', padding: 16, background: 'rgba(239, 68, 68, 0.05)' }}>
+              <div style={{ fontSize: 11, color: '#7f1d1d', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Consensus Frustration</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#dc2626', marginBottom: 4 }}>{ensembleResults.consensus.frustration}%</div>
+              <div style={{ fontSize: 13, color: '#f87171' }}>Voted by {ensembleResults.model_count} models</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Individual Model Predictions</h3>
+            <div style={{ display: 'grid', gap: 10, maxHeight: 400, overflowY: 'auto' }}>
+              {Object.entries(ensembleResults.all_results).map(([modelId, result]) => (
+                <div
+                  key={modelId}
+                  style={{
+                    borderRadius: 8,
+                    border: '1px solid #cbd5e1',
+                    padding: 12,
+                    background: result.error ? 'rgba(239, 68, 68, 0.08)' : 'rgba(226, 232, 240, 0.5)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>{result.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>
+                        {result.family} • {result.status}
+                      </div>
+                    </div>
+                    {result.error ? (
+                      <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>ERROR</div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>OK</div>
+                    )}
+                  </div>
+                  {result.error ? (
+                    <div style={{ fontSize: 12, color: '#991b1b', background: 'rgba(239, 68, 68, 0.1)', padding: 8, borderRadius: 6 }}>
+                      {result.error}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, fontSize: 12 }}>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Engagement:</span> <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                          {Math.round((result.normalized_scores?.engagement ?? 0) * 100) / 100}%
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Boredom:</span> <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                          {Math.round((result.normalized_scores?.boredom ?? 0) * 100) / 100}%
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Confusion:</span> <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                          {Math.round((result.normalized_scores?.confusion ?? 0) * 100) / 100}%
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Frustration:</span> <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                          {Math.round((result.normalized_scores?.frustration ?? 0) * 100) / 100}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section style={panelStyle}>
+        <h2 style={h2}>Ensemble Run Log</h2>
+        <pre style={{ margin: 0, color: '#0f172a', fontSize: 12, whiteSpace: 'pre-wrap', background: 'rgba(255,255,255,0.9)', borderRadius: 10, border: '1px solid #cbd5e1', padding: 12, maxHeight: 220, overflowY: 'auto' }}>
+          {(ensembleLog.length ? ensembleLog.join('\n') : 'No ensemble runs yet. Click "Ensemble Voting" to start.').toString()}
         </pre>
       </section>
 

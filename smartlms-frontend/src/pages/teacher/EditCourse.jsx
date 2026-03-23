@@ -56,7 +56,16 @@ export default function EditCourse() {
                 setUploadingLectureVideo(true);
                 const fd = new FormData();
                 fd.append('file', lectureVideoFile);
-                await lecturesAPI.uploadVideo(res.data.id, fd);
+                try {
+                    await lecturesAPI.uploadVideo(res.data.id, fd);
+                } catch (uploadErr) {
+                    setToast({
+                        type: 'error',
+                        message: uploadErr.response?.data?.detail || 'Lecture created, but Cloudinary video upload failed.'
+                    });
+                    fetchData();
+                    return;
+                }
                 setUploadingLectureVideo(false);
             }
             setLectureForm({ title: '', youtube_url: '', video_url: '' });
@@ -406,7 +415,7 @@ export default function EditCourse() {
                                     accept="video/*"
                                     onChange={e => setLectureVideoFile(e.target.files?.[0] || null)}
                                 />
-                                <p className="text-xs text-text-muted font-semibold mt-2">For larger files use Cloudinary/S3 URL; local upload is best for dev/staging.</p>
+                                <p className="text-xs text-text-muted font-semibold mt-2">Selected video files are uploaded to Cloudinary automatically and saved as the lecture video URL.</p>
                             </div>
                         </div>
                         <div className="p-8 border-t border-border flex gap-4 justify-end items-center bg-surface-alt">
@@ -453,6 +462,7 @@ export default function EditCourse() {
                                     accept="video/*"
                                     onChange={e => setLectureVideoFile(e.target.files?.[0] || null)}
                                 />
+                                <p className="text-xs text-text-muted font-semibold mt-2">Replacing uploads the new file to Cloudinary and updates this lecture's video link.</p>
                             </div>
                         </div>
                         <div className="p-8 border-t border-border flex gap-4 justify-end items-center bg-surface-alt">

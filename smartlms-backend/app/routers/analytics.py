@@ -5,10 +5,12 @@ Teaching scores, course analytics, engagement summaries
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc
 from typing import Optional
 from datetime import datetime
+from statistics import pstdev
 from app.database import get_db
+from app.config import settings
 from app.models.models import (
     User, UserRole, Course, Lecture, Enrollment, EnrollmentStatus,
     EngagementLog, QuizAttempt, Quiz, Feedback, Attendance,
@@ -18,6 +20,119 @@ from app.middleware.auth import get_current_user, require_teacher_or_admin
 from app.services.debug_logger import debug_logger
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
+
+
+def _score_level(score: float) -> str:
+    if score < 20:
+        return "Very Low"
+    if score < 40:
+        return "Low"
+    if score < 60:
+        return "Moderate"
+    if score < 80:
+        return "High"
+    return "Very High"
+
+
+def _safe_mean(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    return float(sum(values) / len(values))
+
+
+def _build_dimension_distribution(history_rows: list[dict]) -> dict:
+    dimensions = {
+        "Boredom": {"Very Low": 0, "Low": 0, "Moderate": 0, "High": 0, "Very High": 0},
+        "Engagement": {"Very Low": 0, "Low": 0, "Moderate": 0, "High": 0, "Very High": 0},
+        "Confusion": {"Very Low": 0, "Low": 0, "Moderate": 0, "High": 0, "Very High": 0},
+        "Frustration": {"Very Low": 0, "Low": 0, "Moderate": 0, "High": 0, "Very High": 0},
+    }
+
+    for row in history_rows:
+        mapping = {
+            "Boredom": row.get("boredom_score", 0),
+            "Engagement": row.get("engagement_score", 0),
+            "Confusion": row.get("confusion_score", 0),
+            "Frustration": row.get("frustration_score", 0),
+        }
+        for dimension, score in mapping.items():
+            dimensions[dimension][_score_level(float(score or 0))] += 1
+
+    return dimensions
+
+
+def _dashboard_insights(scores: list[float], history_rows: list[dict]) -> list[str]:
+    if not scores:
+        return ["No engagement history yet. Attend more lecture sessions to unlock analytics insights."]
+
+    insights = []
+    if len(scores) >= 3:
+        trend_delta = scores[-1] - scores[0]
+        if trend_delta >= 8:
+            insights.append("Your engagement trend is improving over recent sessions. Keep this momentum.")
+        elif trend_delta <= -8:
+            insights.append("Your engagement trend is declining. Try shorter focused study blocks with fewer distractions.")
+
+    avg_score = _safe_mean(scores)
+    if avg_score >= 75:
+        insights.append("Strong sustained engagement detected. You're learning in a high-attention zone.")
+    elif avg_score < 45:
+        insights.append("Average engagement is currently low. Consider pausing videos for quick active recall notes.")
+
+    if history_rows:
+        avg_boredom = _safe_mean([float(r.get("boredom_score") or 0) for r in history_rows])
+        avg_confusion = _safe_mean([float(r.get("confusion_score") or 0) for r in history_rows])
+        avg_frustration = _safe_mean([float(r.get("frustration_score") or 0) for r in history_rows])
+
+        if avg_confusion > 45:
+            insights.append("Confusion signals are elevated. Review difficult concepts and ask AI Tutor targeted questions.")
+        if avg_boredom > 50:
+            insights.append("Boredom is high in multiple sessions. Increase interaction frequency with quizzes and note-taking.")
+        if avg_frustration > 40:
+            insights.append("Frustration appears elevated. Break lessons into smaller chunks and revisit prerequisites.")
+
+    if not insights:
+        insights.append("Your engagement profile is stable. Continue current learning habits.")
+    return insights[:5]
+
+
+def _build_model_analytics(logs: list[EngagementLog]) -> dict:
+    if not logs:
+        return {
+            "sessions_with_model": 0,
+            "avg_confidence": 0.0,
+            "model_type_distribution": {},
+            "hybrid_sessions": 0,
+            "avg_ensemble_models": 0.0,
+        }
+
+    confidences: list[float] = []
+    model_type_distribution: dict[str, int] = {}
+    hybrid_sessions = 0
+    ensemble_counts: list[int] = []
+
+    for log in logs:
+        feats = log.features if isinstance(log.features, dict) else {}
+        model_type = str(feats.get("model_type") or "unknown")
+        model_type_distribution[model_type] = model_type_distribution.get(model_type, 0) + 1
+
+        conf = feats.get("confidence")
+        if isinstance(conf, (int, float)):
+            confidences.append(float(conf))
+
+        ensemble_models = feats.get("ensemble_models")
+        ensemble_count = len(ensemble_models) if isinstance(ensemble_models, list) else 0
+        if "ensemble" in model_type or ensemble_count > 0:
+            hybrid_sessions += 1
+            ensemble_counts.append(ensemble_count)
+
+    return {
+        "sessions_with_model": len(logs),
+        "avg_confidence": round(_safe_mean(confidences), 3),
+        "model_type_distribution": model_type_distribution,
+        "hybrid_sessions": hybrid_sessions,
+        "avg_ensemble_models": round(_safe_mean([float(x) for x in ensemble_counts]), 2) if ensemble_counts else 0.0,
+    }
 
 
 @router.get("/teaching-score/{course_id}")
@@ -211,6 +326,25 @@ async def get_teaching_score(
     else:
         teacher_activity_score = 10.0
 
+    # ── Multi-dimensional engagement analysis (v3) ──
+    boredom_scores = [l.boredom_score or 50.0 for l in engagement_logs if hasattr(l, 'boredom_score')]
+    confusion_scores = [l.confusion_score or 0.0 for l in engagement_logs if hasattr(l, 'confusion_score')]
+    frustration_scores = [l.frustration_score or 0.0 for l in engagement_logs if hasattr(l, 'frustration_score')]
+
+    # Safe averages
+    boredom_avg = sum(boredom_scores) / max(len(boredom_scores), 1) if boredom_scores else None
+    confusion_avg = sum(confusion_scores) / max(len(confusion_scores), 1) if confusion_scores else None
+    frustration_avg = sum(frustration_scores) / max(len(frustration_scores), 1) if frustration_scores else None
+
+    # Engagement consistency: lower std = more consistent teaching
+    if len(engagement_scores) >= 3:
+        import numpy as np
+        eng_std = float(np.std(engagement_scores))
+        consistency_score = max(0, min(100, 100 - eng_std * 2))  # Lower std = higher score
+    else:
+        eng_std = 0.0
+        consistency_score = 50.0
+
     # ── Overall weighted score (v4) ──
     # Updated weights: engagement(18%) + trend(10%) + low_eng(7%) + quiz(12%) + 
     # icap(12%) + feedback(9%) + completion(8%) + responsiveness(7%) + attendance(7%) + activity(5%) + consistency(5%)
@@ -265,25 +399,6 @@ async def get_teaching_score(
         recommendations.append("Consider messaging more students with personalized feedback — it significantly improves engagement and retention.")
     if not recommendations:
         recommendations.append("Teaching metrics are healthy. Keep up the great work!")
-
-    # ── Multi-dimensional engagement analysis (v3) ──
-    boredom_scores = [l.boredom_score or 50.0 for l in engagement_logs if hasattr(l, 'boredom_score')]
-    confusion_scores = [l.confusion_score or 0.0 for l in engagement_logs if hasattr(l, 'confusion_score')]
-    frustration_scores = [l.frustration_score or 0.0 for l in engagement_logs if hasattr(l, 'frustration_score')]
-
-    # Safe averages
-    boredom_avg = sum(boredom_scores) / max(len(boredom_scores), 1) if boredom_scores else None
-    confusion_avg = sum(confusion_scores) / max(len(confusion_scores), 1) if confusion_scores else None
-    frustration_avg = sum(frustration_scores) / max(len(frustration_scores), 1) if frustration_scores else None
-
-    # Engagement consistency: lower std = more consistent teaching
-    if len(engagement_scores) >= 3:
-        import numpy as np
-        eng_std = float(np.std(engagement_scores))
-        consistency_score = max(0, min(100, 100 - eng_std * 2))  # Lower std = higher score
-    else:
-        eng_std = 0.0
-        consistency_score = 50.0
 
     # Enhanced dimension-specific recommendations (v3)
     if confusion_avg is not None and confusion_avg > 40:
@@ -376,13 +491,29 @@ async def get_course_dashboard(
     current_user: User = Depends(get_current_user),
 ):
     """Get comprehensive course dashboard analytics"""
-    # Engagement distribution
+    # Engagement summary (computed in SQL to avoid Python-heavy scans)
+    eng_summary_result = await db.execute(
+        select(
+            func.count(EngagementLog.id),
+            func.avg(EngagementLog.engagement_score),
+            func.avg(EngagementLog.boredom_score),
+            func.avg(EngagementLog.confusion_score),
+            func.sum(EngagementLog.tab_switches),
+        ).where(
+            EngagementLog.lecture_id.in_(
+                select(Lecture.id).where(Lecture.course_id == course_id)
+            )
+        )
+    )
+    eng_total, eng_avg, boredom_avg, confusion_avg, tab_total = eng_summary_result.one()
+
+    # Engagement distribution rows for student-level view (capped for free-tier stability)
     eng_result = await db.execute(
         select(EngagementLog).where(
             EngagementLog.lecture_id.in_(
                 select(Lecture.id).where(Lecture.course_id == course_id)
             )
-        ).order_by(EngagementLog.started_at.desc())
+        ).order_by(desc(EngagementLog.started_at)).limit(settings.ANALYTICS_MAX_LOG_ROWS)
     )
     engagement_logs = eng_result.scalars().all()
 
@@ -396,15 +527,28 @@ async def get_course_dashboard(
     )
     icap_dist = {row[0].value: row[1] for row in icap_result.all()}
 
-    # Recent quiz performance
+    # Recent quiz performance rows (capped), plus SQL summary
     quiz_result = await db.execute(
         select(QuizAttempt).join(Quiz).where(
             Quiz.lecture_id.in_(
                 select(Lecture.id).where(Lecture.course_id == course_id)
             )
-        ).order_by(QuizAttempt.completed_at.desc())
+        ).order_by(desc(QuizAttempt.completed_at)).limit(settings.ANALYTICS_MAX_LOG_ROWS)
     )
     quiz_attempts = quiz_result.scalars().all()
+
+    quiz_summary_result = await db.execute(
+        select(
+            func.count(QuizAttempt.id),
+            func.avg(QuizAttempt.score / func.nullif(QuizAttempt.max_score, 0) * 100),
+            func.avg(QuizAttempt.integrity_score),
+        ).join(Quiz).where(
+            Quiz.lecture_id.in_(
+                select(Lecture.id).where(Lecture.course_id == course_id)
+            )
+        )
+    )
+    quiz_total, quiz_avg_pct, quiz_integrity_avg = quiz_summary_result.one()
 
     # Tutor Usage
     tutor_result = await db.execute(
@@ -497,21 +641,17 @@ async def get_course_dashboard(
     return {
         "course_id": course_id,
         "engagement": {
-            "total_sessions": len(engagement_logs),
-            "avg_score": round(sum(l.engagement_score or 0 for l in engagement_logs) / max(len(engagement_logs), 1), 1),
-            "avg_boredom": round(sum(l.boredom_score or 0 for l in engagement_logs) / max(len(engagement_logs), 1), 1),
-            "avg_confusion": round(sum(l.confusion_score or 0 for l in engagement_logs) / max(len(engagement_logs), 1), 1),
-            "total_tab_switches": sum(l.tab_switches or 0 for l in engagement_logs),
+            "total_sessions": eng_total or 0,
+            "avg_score": round(eng_avg or 0, 1),
+            "avg_boredom": round(boredom_avg or 0, 1),
+            "avg_confusion": round(confusion_avg or 0, 1),
+            "total_tab_switches": int(tab_total or 0),
         },
         "icap_distribution": icap_dist,
         "quiz_performance": {
-            "total_attempts": len(quiz_attempts),
-            "avg_score": round(sum(
-                (a.score / a.max_score * 100) if a.max_score else 0 for a in quiz_attempts
-            ) / max(len(quiz_attempts), 1), 1),
-            "avg_integrity": round(
-                sum(a.integrity_score or 100 for a in quiz_attempts) / max(len(quiz_attempts), 1), 1
-            ),
+            "total_attempts": quiz_total or 0,
+            "avg_score": round(quiz_avg_pct or 0, 1),
+            "avg_integrity": round(quiz_integrity_avg or 100, 1),
         },
         "tutor_usage": {
             "total_messages": len(tutor_logs)
@@ -539,9 +679,21 @@ async def get_lecture_dashboard(
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
 
-    # Get all engagement logs for this lecture
+    # Get total views/average from SQL, then load recent logs for detailed cards
+    summary_result = await db.execute(
+        select(
+            func.count(EngagementLog.id),
+            func.avg(EngagementLog.engagement_score),
+        ).where(EngagementLog.lecture_id == lecture_id)
+    )
+    total_views, avg_engagement_raw = summary_result.one()
+
+    # Get recent engagement logs for this lecture (capped)
     eng_result = await db.execute(
-        select(EngagementLog).where(EngagementLog.lecture_id == lecture_id)
+        select(EngagementLog)
+        .where(EngagementLog.lecture_id == lecture_id)
+        .order_by(desc(EngagementLog.started_at))
+        .limit(settings.ANALYTICS_MAX_LOG_ROWS)
     )
     engagement_logs = eng_result.scalars().all()
 
@@ -587,12 +739,12 @@ async def get_lecture_dashboard(
                  "timeline": log.scores_timeline
              })
 
-    avg_engagement = sum(s["engagement_score"] for s in student_stats) / max(len(student_stats), 1) if student_stats else 0
+    avg_engagement = float(avg_engagement_raw or 0)
     
     return {
         "lecture_id": lecture_id,
         "lecture_title": lecture.title,
-        "total_views": len(engagement_logs),
+        "total_views": total_views or 0,
         "avg_engagement": round(avg_engagement, 1),
         "student_stats": student_stats,
         "engagement_timelines": timelines
@@ -644,11 +796,41 @@ async def get_student_dashboard(
     )
     download_logs = download_result.scalars().all()
 
+    # Build prototype-style engagement history analytics (ascending by time)
+    history_rows = []
+    for log in reversed(logs):
+        history_rows.append({
+            "timestamp": log.started_at.isoformat() if log.started_at else None,
+            "engagement_score": float(log.engagement_score or 0),
+            "boredom_score": float(log.boredom_score or 0),
+            "confusion_score": float(log.confusion_score or 0),
+            "frustration_score": float(log.frustration_score or 0),
+            "icap": log.icap_classification.value if log.icap_classification else None,
+            "lecture_id": log.lecture_id,
+        })
+
+    engagement_scores = [float(r["engagement_score"]) for r in history_rows]
+    avg_session_duration_mins = (
+        (sum((l.watch_duration or 0) for l in logs) / len(logs) / 60.0) if logs else 0.0
+    )
+    trend_delta = (engagement_scores[-1] - engagement_scores[0]) if len(engagement_scores) >= 2 else 0.0
+    score_std = float(pstdev(engagement_scores)) if len(engagement_scores) >= 2 else 0.0
+    dimension_distribution = _build_dimension_distribution(history_rows)
+    insights = _dashboard_insights(engagement_scores, history_rows)
+    model_analytics = _build_model_analytics(logs)
+
     return {
         "engagement": {
             "total_sessions": len(logs),
             "avg_score": round(sum(l.engagement_score or 0 for l in logs) / max(len(logs), 1), 1),
             "total_watch_time": sum(l.watch_duration or 0 for l in logs),
+            "avg_session_duration": round(avg_session_duration_mins, 1),
+            "trend_delta": round(trend_delta, 1),
+            "peak_score": round(max(engagement_scores), 1) if engagement_scores else 0.0,
+            "lowest_score": round(min(engagement_scores), 1) if engagement_scores else 0.0,
+            "std_deviation": round(score_std, 1),
+            "history": history_rows,
+            "dimension_distribution": dimension_distribution,
             "recent": [
                 {
                     "lecture_id": l.lecture_id,
@@ -661,6 +843,7 @@ async def get_student_dashboard(
         },
         "quizzes": {
             "total_attempts": len(attempts),
+            "completed": len(attempts),
             "avg_score": round(sum(
                 (a.score / a.max_score * 100) if a.max_score else 0 for a in attempts
             ) / max(len(attempts), 1), 1),
@@ -675,5 +858,57 @@ async def get_student_dashboard(
                 "file_type": (log.details or {}).get("file_type", "txt"),
                 "date": log.created_at.isoformat() if log.created_at else None
             } for log in download_logs[:10]
-        ]
+        ],
+        "insights": insights,
+        "model_analytics": model_analytics,
+    }
+
+
+@router.get("/student-engagement-history")
+async def get_student_engagement_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    limit: int = 120,
+):
+    """Prototype-style engagement history service for trend + dimension distribution charts."""
+    safe_limit = max(10, min(limit, 500))
+
+    eng_result = await db.execute(
+        select(EngagementLog)
+        .where(EngagementLog.student_id == current_user.id)
+        .order_by(desc(EngagementLog.started_at))
+        .limit(safe_limit)
+    )
+    logs = eng_result.scalars().all()
+
+    history_rows = []
+    for log in reversed(logs):
+        history_rows.append({
+            "timestamp": log.started_at.isoformat() if log.started_at else None,
+            "engagement_score": float(log.engagement_score or 0),
+            "boredom_score": float(log.boredom_score or 0),
+            "confusion_score": float(log.confusion_score or 0),
+            "frustration_score": float(log.frustration_score or 0),
+            "icap": log.icap_classification.value if log.icap_classification else None,
+            "lecture_id": log.lecture_id,
+        })
+
+    engagement_scores = [float(r["engagement_score"]) for r in history_rows]
+    dimension_distribution = _build_dimension_distribution(history_rows)
+    model_analytics = _build_model_analytics(logs)
+
+    return {
+        "count": len(history_rows),
+        "history": history_rows,
+        "summary": {
+            "average_engagement": round(_safe_mean(engagement_scores), 1),
+            "peak_engagement": round(max(engagement_scores), 1) if engagement_scores else 0.0,
+            "lowest_engagement": round(min(engagement_scores), 1) if engagement_scores else 0.0,
+            "std_deviation": round(float(pstdev(engagement_scores)) if len(engagement_scores) >= 2 else 0.0, 1),
+            "trend_delta": round((engagement_scores[-1] - engagement_scores[0]) if len(engagement_scores) >= 2 else 0.0, 1),
+            "avg_model_confidence": round(model_analytics.get("avg_confidence", 0.0) * 100.0, 1),
+            "hybrid_sessions": model_analytics.get("hybrid_sessions", 0),
+        },
+        "dimension_distribution": dimension_distribution,
+        "model_analytics": model_analytics,
     }

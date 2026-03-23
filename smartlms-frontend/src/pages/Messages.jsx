@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { messagesAPI } from '../api/client';
+import { messagesAPI, coursesAPI } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useActivity } from '../context/ActivityTracker';
 import {
     MessageSquare, Send, ChevronLeft, Search, AlertTriangle,
-    BookOpen, Award, TrendingDown, User, Clock, CheckCheck, Check, Sparkles
+    BookOpen, Award, TrendingDown, User, Clock, CheckCheck, Check, Sparkles,
+    Plus, X, UserPlus
 } from 'lucide-react';
 
 const CATEGORY_COLORS = {
@@ -25,16 +26,16 @@ export default function Messages() {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+    const [availableStudents, setAvailableStudents] = useState([]);
+    const [studentSearchQuery, setStudentSearchQuery] = useState('');
+    const [loadingStudents, setLoadingStudents] = useState(false);
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
         loadConversations();
         trackEvent?.('messages_viewed');
     }, []);
-
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
 
     const loadConversations = async () => {
         try {
@@ -43,6 +44,86 @@ export default function Messages() {
         } catch { }
         setLoading(false);
     };
+
+    const loadAvailableStudents = async () => {
+        setLoadingStudents(true);
+        console.log('Loading available students...', 'User role:', user?.role);
+        
+        try {
+            if (user?.role === 'teacher' || user?.role === 'admin') {
+                console.log('Fetching courses...');
+                const coursesRes = await coursesAPI.list();
+                const courses = coursesRes.data || [];
+                console.log('Courses:', courses);
+                
+                const allStudents = new Map();
+                
+                for (const course of courses) {
+                    try {
+                        console.log(`Fetching students for course ${course.id}...`);
+                        const studentsRes = await coursesAPI.getStudents(course.id);
+                        const students = studentsRes.data || [];
+                        console.log(`Students for course ${course.id}:`, students);
+                        
+                        students.forEach(student => {
+                            // Map backend field names to frontend field names
+                            const mappedStudent = {
+                                id: student.student_id || student.id,
+                                name: student.full_name || student.name,
+                                email: student.email,
+                                username: student.username,
+                                ...student // Include all original fields
+                            };
+                            
+                            if (!allStudents.has(mappedStudent.id)) {
+                                allStudents.set(mappedStudent.id, mappedStudent);
+                            }
+                        });
+                    } catch (err) {
+                        console.error(`Failed to get students for course ${course.id}:`, err);
+                    }
+                }
+                
+                console.log('Total students:', allStudents.size);
+                setAvailableStudents(Array.from(allStudents.values()));
+            }
+        } catch (err) {
+            console.error('Failed to load students:', err);
+        } finally {
+            setLoadingStudents(false);
+        }
+    };
+
+    const openNewMessageModal = () => {
+        console.log('Opening new message modal');
+        setShowNewMessageModal(true);
+        setStudentSearchQuery('');
+        loadAvailableStudents();
+    };
+
+    const startConversation = async (student) => {
+        // Check if conversation already exists
+        const existingConversation = conversations.find(c => c.other_user_id === student.id);
+        if (existingConversation) {
+            // Just select the existing conversation
+            selectConversation(student.id);
+        } else {
+            // Load messages with the student (even if empty, it establishes the conversation)
+            try {
+                const res = await messagesAPI.getWith(student.id);
+                setMessages(res.data.messages);
+                setSelectedUser(res.data.other_user);
+                loadConversations();
+            } catch (err) {
+                console.error('Failed to start conversation:', err);
+            }
+        }
+        setShowNewMessageModal(false);
+    };
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
 
     const selectConversation = async (otherUserId) => {
         try {
@@ -85,25 +166,37 @@ export default function Messages() {
     );
 
     return (
-        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
-            <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-8 border-l-8 border-accent pl-6 flex items-center gap-4 py-2">
-                <MessageSquare className="text-accent" size={40} />
-                Messages
-            </h1>
+        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in space-y-8">
+            <div className="rounded-[2rem] bg-gradient-to-br from-primary to-accent p-8 text-white relative overflow-hidden">
+                <div className="absolute -right-8 -top-8 opacity-20"><MessageSquare size={160} /></div>
+                <h1 className="text-4xl md:text-5xl font-black tracking-tight flex items-center gap-4 py-1">
+                    <MessageSquare size={40} /> Messages
+                </h1>
+                <p className="text-white/85 mt-2 text-base font-medium">Stay connected with your students, teachers, and peers.</p>
+            </div>
 
-            <div className="bg-surface rounded-3xl shadow-sm border border-border overflow-hidden h-[calc(100vh-220px)] flex">
+            <div className="glass-premium rounded-3xl shadow-sm border border-border/60 overflow-hidden h-[calc(100vh-260px)] min-h-[560px] flex">
                 {/* Conversation List */}
                 <div className={`${selectedUser ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-96 lg:w-[450px] border-r border-border bg-surface-alt`}>
-                    <div className="p-6 border-b border-border bg-surface">
-                        <div className="relative group">
-                            <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Search conversations..."
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-14 pr-5 py-4 text-base font-medium border border-border rounded-2xl focus:ring-4 focus:ring-accent/20 focus:border-accent bg-surface-elevated shadow-sm outline-none transition-all placeholder-text-muted text-text"
-                            />
+                    <div className="p-6 border-b border-border bg-surface space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="relative group flex-1">
+                                <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors" />
+                                <input
+                                    type="text"
+                                    placeholder="Search conversations..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="w-full pl-14 pr-5 py-4 text-base font-medium border border-border rounded-2xl focus:ring-4 focus:ring-accent/20 focus:border-accent bg-surface-elevated shadow-sm outline-none transition-all placeholder-text-muted text-text"
+                                />
+                            </div>
+                            <button
+                                onClick={openNewMessageModal}
+                                className="p-4 bg-accent text-white rounded-2xl hover:bg-accent-light transition-all border border-accent hover:scale-105 active:scale-95 flex-shrink-0 shadow-accent"
+                                title="Start new conversation"
+                            >
+                                <Plus size={20} />
+                            </button>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -277,6 +370,94 @@ export default function Messages() {
                     )}
                 </div>
             </div>
+
+            {/* New Message Modal */}
+            {showNewMessageModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-surface rounded-3xl shadow-2xl border border-border max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+                        {/* Modal Header */}
+                        <div className="p-6 md:p-8 border-b border-border flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-accent-light border border-accent/20 flex items-center justify-center shadow-inner">
+                                    <UserPlus size={24} className="text-accent" />
+                                </div>
+                                <div>
+                                    <h2 className="font-black text-2xl text-text">Start New Chat</h2>
+                                    <p className="text-sm font-medium text-text-secondary mt-1">Select a student to begin messaging</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowNewMessageModal(false)}
+                                className="p-3 hover:bg-surface-elevated rounded-xl transition-colors border border-border"
+                            >
+                                <X size={24} className="text-text-secondary" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-y-auto">
+                            {/* Search */}
+                            <div className="p-6 md:p-8 border-b border-border bg-surface-alt/50">
+                                <div className="relative group">
+                                    <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search students..."
+                                        value={studentSearchQuery}
+                                        onChange={e => setStudentSearchQuery(e.target.value)}
+                                        className="w-full pl-14 pr-5 py-4 text-base font-medium border border-border rounded-2xl focus:ring-4 focus:ring-accent/20 focus:border-accent bg-surface shadow-sm outline-none transition-all placeholder-text-muted text-text"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Student List */}
+                            <div className="p-4 md:p-6 space-y-3">
+                                {loadingStudents ? (
+                                    <div className="flex items-center justify-center py-20">
+                                        <div className="text-center">
+                                            <div className="w-12 h-12 border-4 border-accent-light border-t-accent rounded-full animate-spin mx-auto mb-4" />
+                                            <p className="text-sm font-medium text-text-secondary">Loading students...</p>
+                                        </div>
+                                    </div>
+                                ) : availableStudents.length === 0 ? (
+                                    <div className="py-12 text-center text-text-muted">
+                                        <User size={64} className="mx-auto mb-4 opacity-30" strokeWidth={1} />
+                                        <p className="text-lg font-black text-text tracking-tight">No students available</p>
+                                        <p className="text-base font-medium mt-1">You're not teaching any courses yet or no students are enrolled</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {availableStudents
+                                            .filter(student =>
+                                                (student.name || '').toLowerCase().includes(studentSearchQuery.toLowerCase()) ||
+                                                (student.email || '').toLowerCase().includes(studentSearchQuery.toLowerCase())
+                                            )
+                                            .map(student => (
+                                                <button
+                                                    key={student.id}
+                                                    onClick={() => startConversation(student)}
+                                                    className="w-full p-4 rounded-2xl border border-border hover:border-accent hover:bg-surface-elevated transition-all flex items-center gap-4 text-left group"
+                                                >
+                                                    <div className="w-12 h-12 rounded-xl bg-accent-light border border-accent/20 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                                                        <User size={20} className="text-accent" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-lg text-text truncate">{student.name || 'Unknown Student'}</p>
+                                                        <p className="text-sm text-text-secondary truncate">{student.email || 'No email'}</p>
+                                                    </div>
+                                                    <div className="flex-shrink-0">
+                                                        <MessageSquare size={20} className="text-accent-light group-hover:text-accent transition-colors" />
+                                                    </div>
+                                                </button>
+                                            ))
+                                        }
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

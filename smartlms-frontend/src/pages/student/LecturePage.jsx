@@ -4,7 +4,7 @@ import ReactPlayer from 'react-player';
 import { lecturesAPI, engagementAPI, quizzesAPI, feedbackAPI, gamificationAPI } from '../../api/client';
 import {
     Pause, Brain, Sparkles, BarChart3, Info, Play, FileText,
-    Clock, CheckCircle, ArrowRight
+    Clock, CheckCircle, ArrowRight, Activity
 } from 'lucide-react';
 import { useActivity } from '../../context/ActivityTracker';
 import { SHAPWaterfall, TopFactors, FuzzyRulesList, EngagementGauge } from '../../components/engagement/SHAPVisualization';
@@ -45,10 +45,13 @@ export default function LecturePage() {
     const [loading, setLoading] = useState(true);
     const [playing, setPlaying] = useState(false);
     const [engagementScore, setEngagementScore] = useState(null);
+    const [modelLabel, setModelLabel] = useState('Loading model...');
+    const [hybridCatalog, setHybridCatalog] = useState({ total: 0, exportAvailable: 0, recommended: 0 });
     const [phase, setPhase] = useState('lecture'); 
     const [quizzes, setQuizzes] = useState([]);
     const [sessionId] = useState(`session_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     const featureBuffer = useRef([]);
+    const submitInFlightRef = useRef(false);
     const [faceDetected, setFaceDetected] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
@@ -59,6 +62,71 @@ export default function LecturePage() {
     const { trackEvent } = useActivity();
 
     const behaviorState = useRef({ keyboardActive: false, mouseActive: false, playbackSpeed: 1, note_taking: false });
+
+    const toFiniteNumber = (value, fallback = 0) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    };
+
+    const parseDurationToSeconds = (value) => {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return Math.max(0, Math.floor(value));
+        }
+
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) return 0;
+
+            // Supports HH:MM:SS or MM:SS
+            if (trimmed.includes(':')) {
+                const parts = trimmed.split(':').map((p) => Number(p));
+                if (parts.every((p) => Number.isFinite(p) && p >= 0)) {
+                    if (parts.length === 3) {
+                        return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+                    }
+                    if (parts.length === 2) {
+                        return (parts[0] * 60) + parts[1];
+                    }
+                }
+            }
+
+            const asNum = Number(trimmed);
+            if (Number.isFinite(asNum)) return Math.max(0, Math.floor(asNum));
+        }
+
+        return 0;
+    };
+
+    const sanitizeFeature = (feature) => ({
+        session_id: sessionId,
+        lecture_id: lectureId,
+        timestamp: toFiniteNumber(feature?.timestamp, Date.now()),
+
+        gaze_score: toFiniteNumber(feature?.gaze_score),
+        head_pose_yaw: toFiniteNumber(feature?.head_pose_yaw),
+        head_pose_pitch: toFiniteNumber(feature?.head_pose_pitch),
+        head_pose_roll: toFiniteNumber(feature?.head_pose_roll),
+        head_pose_stability: toFiniteNumber(feature?.head_pose_stability),
+        eye_aspect_ratio_left: toFiniteNumber(feature?.eye_aspect_ratio_left),
+        eye_aspect_ratio_right: toFiniteNumber(feature?.eye_aspect_ratio_right),
+        blink_rate: toFiniteNumber(feature?.blink_rate),
+        mouth_openness: toFiniteNumber(feature?.mouth_openness),
+
+        au01_inner_brow_raise: toFiniteNumber(feature?.au01_inner_brow_raise),
+        au02_outer_brow_raise: toFiniteNumber(feature?.au02_outer_brow_raise),
+        au04_brow_lowerer: toFiniteNumber(feature?.au04_brow_lowerer),
+        au06_cheek_raiser: toFiniteNumber(feature?.au06_cheek_raiser),
+        au12_lip_corner_puller: toFiniteNumber(feature?.au12_lip_corner_puller),
+        au15_lip_corner_depressor: toFiniteNumber(feature?.au15_lip_corner_depressor),
+        au25_lips_part: toFiniteNumber(feature?.au25_lips_part),
+        au26_jaw_drop: toFiniteNumber(feature?.au26_jaw_drop),
+
+        keyboard_active: !!feature?.keyboard_active,
+        mouse_active: !!feature?.mouse_active,
+        tab_visible: feature?.tab_visible !== false,
+        playback_speed: toFiniteNumber(feature?.playback_speed, 1),
+        note_taking: !!feature?.note_taking,
+    });
 
     useEffect(() => {
         Promise.all([
@@ -71,6 +139,34 @@ export default function LecturePage() {
             setMaterials(materialsRes.data || []);
         }).finally(() => setLoading(false));
     }, [lectureId]);
+
+    useEffect(() => {
+        engagementAPI.getModelInfo()
+            .then((res) => {
+                const info = res?.data || {};
+                const type = info.model_type || 'unknown';
+                const version = info.model_version || '';
+                setModelLabel(version ? `${type} (${version})` : type);
+            })
+            .catch(() => {
+                setModelLabel('Model unavailable');
+            });
+
+        engagementAPI.listModels()
+            .then((res) => {
+                const models = res?.data?.models || [];
+                const exportAvailable = models.filter((m) => m.family === 'export_keras' && m.status === 'available').length;
+                const recommended = models.filter((m) => m.recommended && m.status === 'available').length;
+                setHybridCatalog({
+                    total: models.length,
+                    exportAvailable,
+                    recommended,
+                });
+            })
+            .catch(() => {
+                setHybridCatalog({ total: 0, exportAvailable: 0, recommended: 0 });
+            });
+    }, []);
 
     const selectedQuizId = new URLSearchParams(location.search).get('quizId');
     const requestedPhase = new URLSearchParams(location.search).get('phase');
@@ -116,31 +212,75 @@ export default function LecturePage() {
         };
     }, [playing]);
 
+    // Keep model scoring continuous while the lecture is playing,
+    // even if feature buffer does not quickly reach threshold.
+    useEffect(() => {
+        if (!playing || phase !== 'lecture') return;
+        const timerId = setInterval(() => {
+            submitEngagement();
+        }, 10000);
+        return () => clearInterval(timerId);
+    }, [playing, phase]);
+
     const submitEngagement = async () => {
+        if (submitInFlightRef.current) return;
         if (featureBuffer.current.length === 0) return;
+
+        const batch = featureBuffer.current.splice(0, featureBuffer.current.length).map(sanitizeFeature);
+        if (batch.length === 0) return;
+
+        submitInFlightRef.current = true;
         try {
             const res = await engagementAPI.submit({
                 session_id: sessionId,
                 lecture_id: lectureId,
-                features: featureBuffer.current,
+                features: batch,
                 idle_time: 0,
                 playback_speeds: playbackSpeedHistory,
-                watch_duration: watchDuration,
-                total_duration: lecture?.duration || 0,
+                watch_duration: Math.max(0, Math.floor(toFiniteNumber(watchDuration, 0))),
+                total_duration: parseDurationToSeconds(lecture?.duration),
             });
+            console.log('✅ Engagement submitted successfully:', res.data);
             setEngagementScore(res.data);
-            featureBuffer.current = [];
+            if (res?.data?.model_type) {
+                const ensembleCount = Number(res?.data?.ensemble_model_count || 0);
+                setModelLabel(
+                    ensembleCount > 0
+                        ? `${res.data.model_type} • ${ensembleCount} exports`
+                        : res.data.model_type
+                );
+            }
+            return res.data;
         } catch (err) {
-            console.error('Engagement submit error:', err);
+            console.error('❌ Engagement submit error:', err?.response?.data || err);
+        } finally {
+            submitInFlightRef.current = false;
         }
     };
 
     const handleVideoEnd = async () => {
+        console.log('🎬 Lecture ended, submitting engagement data...');
         setPlaying(false);
+        
+        // Submit any remaining engagement data
         await submitEngagement();
-        try { await gamificationAPI.awardPoints('lecture_complete', 20); } catch (e) { console.warn("Score award failed:", e); }
-        if (quizzes.length > 0) setPhase('quiz');
-        else setPhase('feedback');
+        
+        try { 
+            await gamificationAPI.awardPoints('lecture_complete', 20); 
+            console.log('✅ Lecture complete points awarded');
+        } catch (e) { 
+            console.warn("Score award failed:", e); 
+        }
+        
+        // Auto-transition to quiz or feedback
+        console.log('📋 Transitioning to next phase...');
+        if (quizzes.length > 0) {
+            console.log('✅ Quizzes available, moving to quiz phase');
+            setPhase('quiz');
+        } else {
+            console.log('📝 No quizzes, moving to feedback phase');
+            setPhase('feedback');
+        }
     };
 
     const handlePlaybackSpeedChange = (speed) => {
@@ -245,6 +385,8 @@ export default function LecturePage() {
                                             featureBuffer.current.push(featureVector);
                                             if (featureBuffer.current.length >= 10) submitEngagement();
                                         }}
+                                        modelLabel={modelLabel}
+                                        hybridCatalog={hybridCatalog}
                                     />
                                 ) : (
                                     <div className="p-10 md:p-14 bg-surface-alt border-b border-border">
@@ -281,7 +423,10 @@ export default function LecturePage() {
                     quiz={activeQuiz}
                     lectureId={lectureId}
                     sessionId={sessionId}
-                    onComplete={() => setPhase('feedback')}
+                    onComplete={() => {
+                        console.log('✅ Quiz phase complete, moving to feedback...');
+                        setPhase('feedback');
+                    }}
                 />
             )}
 
@@ -289,7 +434,14 @@ export default function LecturePage() {
                 <FeedbackPhase
                     lectureId={lectureId}
                     courseId={lecture?.course_id}
-                    onComplete={() => { setPhase('done'); }}
+                    onComplete={() => { 
+                        console.log('✅ Feedback phase complete, returning to course page...');
+                        if (lecture?.course_id) {
+                            navigate(`/courses/${lecture.course_id}`);
+                            return;
+                        }
+                        navigate('/my-courses');
+                    }}
                 />
             )}
 
@@ -331,7 +483,7 @@ export default function LecturePage() {
                             {engagementScore.top_factors?.length > 0 && (
                                 <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10">
                                     <h3 className="text-xl font-bold text-text mb-6 flex items-center gap-3">
-                                        <Brain className="text-violet-500" size={24} /> What Influenced Your Score
+                                        <Brain className="text-accent" size={24} /> What Influenced Your Score
                                     </h3>
                                     <SHAPWaterfall 
                                         shapValues={engagementScore.top_factors?.map(f => ({
@@ -360,7 +512,7 @@ export default function LecturePage() {
                         </div>
                     )}
 
-                    <button className="btn btn-primary btn-lg shadow-accent bg-primary text-white border-primary hover:bg-primary-light px-10 py-5 text-xl" onClick={() => navigate(-1)}>
+                    <button className="btn btn-primary btn-lg shadow-accent bg-primary text-white border-primary hover:bg-primary-light px-10 py-5 text-xl" onClick={() => navigate(`/courses/${lecture?.course_id || ''}`)}>
                         <ArrowRight size={24} className="mr-3" /> Back to Course 
                     </button>
                 </div>
@@ -381,7 +533,7 @@ function EngagementIntelligencePanel({ engagementScore, lectureId }) {
     const modelType = engagementScore.model_type || 'rule_based';
 
     return (
-        <div className="px-10 md:px-14 py-8 bg-gradient-to-r from-surface via-surface-alt to-surface border-t border-border/50">
+        <div className="px-10 md:px-14 py-8 bg-linear-to-r from-surface via-surface-alt to-surface border-t border-border/50">
             <div className="flex items-center justify-between gap-8">
                 <div className="flex items-center gap-8 flex-wrap">
                     <div className="flex items-center gap-4">
@@ -424,7 +576,7 @@ function EngagementIntelligencePanel({ engagementScore, lectureId }) {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div className="bg-surface rounded-2xl border border-border p-6 shadow-sm">
                             <h4 className="text-sm font-black text-text mb-5 flex items-center gap-2 uppercase tracking-wide">
-                                <Sparkles size={16} className="text-violet-500" /> What's Driving Your Score
+                                <Sparkles size={16} className="text-accent" /> What's Driving Your Score
                             </h4>
                             {engagementScore.top_factors?.length > 0 ? (
                                 <TopFactors factors={engagementScore.top_factors?.map(f => ({
@@ -473,7 +625,7 @@ function EngagementIntelligencePanel({ engagementScore, lectureId }) {
                             { label: 'Engagement', value: engagementScore.engagement, color: 'text-success bg-success-light border-success/20' },
                             { label: 'Boredom', value: engagementScore.boredom, color: 'text-danger bg-danger-light border-danger/20' },
                             { label: 'Confusion', value: engagementScore.confusion, color: 'text-warning bg-warning-light border-warning/20' },
-                            { label: 'Frustration', value: engagementScore.frustration, color: 'text-orange-600 bg-orange-50 border-orange-200' },
+                            { label: 'Frustration', value: engagementScore.frustration, color: 'text-info bg-info-light border-info/20' },
                         ].map(d => (
                             <div key={d.label} className={`text-center p-4 rounded-2xl border ${d.color}`}>
                                 <div className="text-2xl font-black mb-1">{(d.value || 0).toFixed(0)}%</div>

@@ -17,6 +17,7 @@ from app.models.models import User, AITutorSession, AITutorMessage, Lecture, Eng
 from app.middleware.auth import get_current_user
 from app.config import settings
 from app.services.debug_logger import debug_logger
+from app.services.groq_fallback import AllModelsRateLimitedError, chat_completion_with_fallback
 from sqlalchemy import select, func, desc
 
 router = APIRouter(prefix="/api/tutor", tags=["AI Tutor"])
@@ -152,6 +153,13 @@ async def chat_with_tutor(
         elif request.mode == "grammar_check":
             model_name = "gemma2-9b-it" 
 
+        model_chain = settings.groq_chat_models_for_task(
+            task=f"tutor_{request.mode}",
+            primary_model=model_name,
+        )
+        model_name = model_chain[0]
+        fallback_models = model_chain[1:]
+
         
         messages = [{"role": "system", "content": sys_prompt}]
         for msg in request.messages[-10:]: # Keep last 10 messages for context window
@@ -173,18 +181,28 @@ async def chat_with_tutor(
         async def generate_response():
             full_content = ""
             try:
-                stream = await client.chat.completions.create(
-                    model=model_name,
+                stream, used_model = await chat_completion_with_fallback(
+                    client,
+                    primary_model=model_name,
+                    fallback_models=fallback_models,
                     messages=messages,
                     temperature=0.7,
                     max_tokens=2048,
-                    stream=True
+                    stream=True,
+                    retries_per_model=settings.GROQ_MODEL_RETRIES_PER_MODEL,
+                    retry_base_seconds=settings.GROQ_MODEL_RETRY_BASE_SECONDS,
+                    retry_max_seconds=settings.GROQ_MODEL_RETRY_MAX_SECONDS,
                 )
+                if used_model != model_name:
+                    debug_logger.log("activity", f"Tutor model fallback engaged: {model_name} -> {used_model}", user_id=current_user.id)
                 async for chunk in stream:
                     if chunk.choices[0].delta.content:
                         content = chunk.choices[0].delta.content
                         full_content += content
                         yield content
+            except AllModelsRateLimitedError as e:
+                debug_logger.log("warning", f"Tutor all-models-rate-limited: {str(e)}", user_id=current_user.id)
+                yield "\n\n[All tutor models are currently rate-limited. Please retry shortly.]"
             except Exception as e:
                 debug_logger.log("error", f"Tutor streaming error: {str(e)}")
                 yield f"\n\n[Error communicating with AI Tutor: {str(e)}]"

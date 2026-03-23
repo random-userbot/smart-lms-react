@@ -16,6 +16,7 @@ import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from groq import Groq
 from app.config import settings
+from app.services.groq_fallback import AllModelsRateLimitedError, transcription_with_fallback
 # from app.database import SessionLocal # For caching if needed later
 
 class YouTubeService:
@@ -228,13 +229,27 @@ class YouTubeService:
                 return ""
 
             with open(temp_audio, "rb") as file:
-                transcription = self.groq_client.audio.transcriptions.create(
-                    file=(os.path.basename(temp_audio), file.read()),
-                    model="whisper-large-v3",
-                    response_format="text"
+                model_chain = settings.groq_audio_models_for_task(
+                    primary_model="whisper-large-v3",
                 )
+                transcription, used_model = transcription_with_fallback(
+                    self.groq_client,
+                    file_tuple=(os.path.basename(temp_audio), file.read()),
+                    primary_model=model_chain[0],
+                    fallback_models=model_chain[1:],
+                    response_format="text",
+                    retries_per_model=settings.GROQ_MODEL_RETRIES_PER_MODEL,
+                    retry_base_seconds=settings.GROQ_MODEL_RETRY_BASE_SECONDS,
+                    retry_max_seconds=settings.GROQ_MODEL_RETRY_MAX_SECONDS,
+                )
+                if used_model != "whisper-large-v3":
+                    print(f"Groq transcription fallback model used: {used_model}")
 
             return transcription
+        except AllModelsRateLimitedError as e:
+            print(f"Whisper rate-limited on all models: {e}")
+            self._groq_cooldown_until = time.time() + max(90, e.retry_after_seconds)
+            return ""
         except Exception as e:
             print(f"Whisper processing error: {e}")
             err_text = str(e).lower()

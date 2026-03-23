@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { adminAPI } from '../../api/client';
 import { Users, Shield, Trash2, ToggleLeft, ToggleRight, Search } from 'lucide-react';
+import { AdminPageSkeleton } from '../../components/ui/PageSkeletons';
 
 export default function UserManagement() {
     const [users, setUsers] = useState([]);
@@ -32,14 +33,26 @@ export default function UserManagement() {
         u.email.toLowerCase().includes(search.toLowerCase())
     );
 
-    if (loading) return <div className="flex h-[50vh] items-center justify-center"><div className="w-12 h-12 border-4 border-accent-light border-t-accent rounded-full animate-spin"></div></div>;
+    if (loading) return <AdminPageSkeleton />;
 
     return (
-        <div className="w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="min-h-[calc(100vh-64px)] bg-surface-alt w-full mx-auto px-6 lg:px-10 py-12 animate-in fade-in relative overflow-hidden">
+            <div className="pointer-events-none absolute -left-20 top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 top-52 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+
+            <div className="bg-linear-to-br from-primary to-accent rounded-4xl border border-white/20 p-8 md:p-10 text-white mb-10 shadow-lg relative overflow-hidden">
+                <div className="absolute -right-8 -top-8 opacity-15 pointer-events-none"><Shield size={170} /></div>
+                <div className="relative z-10">
+                    <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white/80 mb-4">Smart LMS Administration</div>
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-3">User Management</h1>
+                    <p className="text-white/85 font-medium text-lg">Manage all students, teachers, and admins on the platform.</p>
+                </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 relative z-10">
                 <div>
-                    <h1 className="text-4xl md:text-5xl font-black text-text tracking-tight mb-3">User Management</h1>
-                    <p className="text-text-secondary font-medium text-xl">Manage all students, teachers, and admins on the platform.</p>
+                    <h2 className="text-2xl md:text-3xl font-black text-text tracking-tight mb-2">Access Control</h2>
+                    <p className="text-text-secondary font-medium text-base md:text-lg">Filter, search, and manage account status quickly.</p>
                 </div>
                 <div className="flex bg-surface-elevated p-2 rounded-2xl w-full md:w-auto shadow-sm border border-border">
                     {['', 'student', 'teacher', 'admin'].map(r => (
@@ -51,11 +64,11 @@ export default function UserManagement() {
                 </div>
             </div>
 
-            <div className="bg-surface rounded-3xl shadow-sm border border-border overflow-hidden mb-8">
-                <div className="p-6 border-b border-border bg-surface-alt">
+            <div className="glass-premium rounded-3xl shadow-sm border border-border overflow-hidden mb-8 relative z-10">
+                <div className="p-6 border-b border-border bg-surface/70 backdrop-blur-sm">
                     <div className="relative w-full md:w-[450px] group">
                         <Search size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors" />
-                        <input className="input py-4 !pl-14 text-base rounded-2xl bg-surface-elevated shadow-sm w-full"
+                        <input className="input py-4 !pl-14 text-base rounded-2xl bg-surface shadow-sm w-full"
                             placeholder="Search by name, username, or email..." value={search}
                             onChange={e => setSearch(e.target.value)} />
                     </div>

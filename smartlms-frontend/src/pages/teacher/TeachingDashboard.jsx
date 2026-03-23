@@ -1,33 +1,50 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { coursesAPI, analyticsAPI, lecturesAPI, messagesAPI } from '../../api/client';
-import { TrendingUp, BarChart3, Activity, Users, BookOpen, Target, Download, ArrowLeft, Play, Clock, Sparkles, Brain, MessageSquare, Send, AlertTriangle, Award } from 'lucide-react';
+import { coursesAPI, analyticsAPI, lecturesAPI, messagesAPI, engagementAPI, feedbackAPI } from '../../api/client';
+import { TrendingUp, BarChart3, Activity, Users, BookOpen, Target, Download, ArrowLeft, Play, Clock, Sparkles, Brain, MessageSquare, Send, AlertTriangle, Award, MessageCircle } from 'lucide-react';
 
-// Simple HTML/CSS block heatmap component
 function EngagementHeatmap({ timeline }) {
     if (!timeline || timeline.length === 0) return <div className="text-text-muted text-sm font-bold py-3">No timeline data available.</div>;
 
-    return (
-        <div className="flex w-full h-12 rounded-xl overflow-hidden border border-border shadow-inner group cursor-crosshair">
-            {timeline.map((point, i) => {
-                const score = point.engagement || 0;
-                let color = 'bg-danger text-danger border-danger';
-                if (score >= 80) color = 'bg-success text-success border-success';
-                else if (score >= 50) color = 'bg-warning text-warning border-warning';
+    const maxPoints = timeline.length;
+    
+    const points = timeline.map((pt, i) => {
+        const x = (i / Math.max(1, maxPoints - 1)) * 100;
+        const score = pt.engagement || 0;
+        const y = 100 - score;
+        return `${x},${y}`;
+    });
 
-                return (
-                    <div
-                        key={i}
-                        className={`flex-1 ${color} hover:brightness-110 transition-all border-x border-black/5 relative`}
-                    >
-                        <div className="absolute inset-x-0 bottom-full mb-3 hidden group-hover:flex justify-center -translate-x-1/2 left-1/2 z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span className="bg-text text-surface text-xs font-black tracking-widest uppercase py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap">
-                                Score: {score.toFixed(0)}%
-                            </span>
-                        </div>
-                    </div>
-                );
-            })}
+    const pathData = `M 0,100 L ${points.join(' L ')} L 100,100 Z`;
+
+    return (
+        <div className="flex flex-col w-full group">
+            <div className="w-full h-24 rounded-xl overflow-hidden glass-premium shadow-inner relative border border-border-light cursor-crosshair">
+                <div className="absolute inset-0 bg-surface/40 pointer-events-none mix-blend-overlay"></div>
+                
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full relative z-10 opacity-90">
+                    <defs>
+                        <linearGradient id="waveGradient" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#6bff8f" stopOpacity="0.8" />
+                            <stop offset="100%" stopColor="#cc97ff" stopOpacity="0.1" />
+                        </linearGradient>
+                    </defs>
+                    <path d={pathData} fill="url(#waveGradient)" className="transition-all duration-300" />
+                    <polyline points={points.join(' ')} fill="none" stroke="#6bff8f" strokeWidth="1.5" className="drop-shadow-[0_0_8px_rgba(107,255,143,0.8)]" />
+                </svg>
+
+                {/* Grid Lines for reference */}
+                <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20 py-1">
+                    <div className="w-full border-t border-dashed border-text-muted"></div>
+                    <div className="w-full border-t border-dashed border-text-muted"></div>
+                    <div className="w-full border-t border-dashed border-text-muted"></div>
+                </div>
+            </div>
+            
+            <div className="flex justify-between w-full mt-2 opacity-50 text-[10px] font-black uppercase tracking-widest px-1">
+                <span>Start of Lecture</span>
+                <span>Current</span>
+            </div>
         </div>
     );
 }
@@ -43,6 +60,7 @@ export default function TeachingDashboard() {
     const [viewLevel, setViewLevel] = useState('course'); // 'course' | 'lecture' | 'student'
     const [selectedLecture, setSelectedLecture] = useState(null);
     const [lectureDashboard, setLectureDashboard] = useState(null);
+    const [liveWatchers, setLiveWatchers] = useState(null);
     const [selectedStudent, setSelectedStudent] = useState(null);
 
     const [loading, setLoading] = useState(true);
@@ -55,6 +73,28 @@ export default function TeachingDashboard() {
     const [messageSending, setMessageSending] = useState(false);
     const [messageTemplates, setMessageTemplates] = useState([]);
     const [studentAnalytics, setStudentAnalytics] = useState(null);
+    
+    // Feedback/NLP state
+    const [lectureFeedback, setLectureFeedback] = useState(null);
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+    const feedbackSentimentSummary = (() => {
+        const labels = (lectureFeedback || [])
+            .map((f) => f?.sentiment?.label)
+            .filter(Boolean);
+        const total = labels.length;
+        const positive = labels.filter((l) => l === 'positive').length;
+        const neutral = labels.filter((l) => l === 'neutral').length;
+        const negative = labels.filter((l) => l === 'negative').length;
+
+        const pct = (count) => total > 0 ? Math.round((count / total) * 100) : 0;
+        return {
+            total,
+            positivePct: pct(positive),
+            neutralPct: pct(neutral),
+            negativePct: pct(negative),
+        };
+    })();
 
     useEffect(() => {
         let isMounted = true;
@@ -96,13 +136,47 @@ export default function TeachingDashboard() {
         setSelectedLecture(lecture);
         setViewLevel('lecture');
         setSelectedStudent(null);
+        setFeedbackLoading(true);
         try {
             const res = await analyticsAPI.getLectureDashboard(lecture.id);
             setLectureDashboard(res.data);
+            const liveRes = await engagementAPI.getLiveWatchers(lecture.id, { window_seconds: 120 });
+            setLiveWatchers(liveRes.data);
+            // Fetch feedback for this lecture
+            try {
+                const fbRes = await feedbackAPI.getByLecture(lecture.id);
+                setLectureFeedback(fbRes.data);
+            } catch (fbErr) {
+                console.warn('Failed to fetch lecture feedback:', fbErr);
+                setLectureFeedback(null);
+            }
         } catch (err) {
             console.error(err);
+        } finally {
+            setFeedbackLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (viewLevel !== 'lecture' || !selectedLecture?.id) return;
+        let isMounted = true;
+
+        const poll = async () => {
+            try {
+                const res = await engagementAPI.getLiveWatchers(selectedLecture.id, { window_seconds: 120 });
+                if (isMounted) setLiveWatchers(res.data);
+            } catch {
+                if (isMounted) setLiveWatchers(null);
+            }
+        };
+
+        poll();
+        const timer = setInterval(poll, 12000);
+        return () => {
+            isMounted = false;
+            clearInterval(timer);
+        };
+    }, [viewLevel, selectedLecture?.id]);
 
     const handleStudentClick = (studentObj) => {
         setSelectedStudent(studentObj);
@@ -176,7 +250,8 @@ export default function TeachingDashboard() {
                 {score ? (
                     <>
                         {/* 1. HERO SECTION */}
-                        <div className={`rounded-[2.5rem] p-10 md:p-14 mb-10 border shadow-sm relative overflow-hidden flex flex-col md:flex-row items-center gap-10 ${scoreBg}`}>
+                        <div className={`glass-premium rounded-[2.5rem] p-10 md:p-14 mb-10 border border-primary/20 shadow-accent relative overflow-hidden flex flex-col md:flex-row items-center gap-10 group`}>
+                            <div className="absolute inset-0 bg-gradient-to-br from-primary-dark/10 to-primary/5 opacity-100 pointer-events-none"></div>
                             <div className="absolute -right-20 -top-20 opacity-5 pointer-events-none">
                                 <Award size={400} />
                             </div>
@@ -298,6 +373,43 @@ export default function TeachingDashboard() {
                                         <div className="text-4xl font-black text-text mb-2 tracking-tighter">{(score.components?.completion_rate || 0).toFixed(0)}%</div>
                                         <div className="text-[10px] uppercase tracking-widest font-black text-text-muted mb-3">Completion</div>
                                         <div className="text-xs text-text-secondary font-bold bg-surface shadow-sm rounded-full px-4 py-1.5 border border-border">Rate</div>
+                                    </div>
+                                </div>
+
+                                {/* Student Feedback Analysis (NLP) Block explicitly created by Stitch */}
+                                <div className="mt-8 glass-premium p-8 rounded-[2rem] border border-primary/20 shadow-accent">
+                                    <h4 className="text-lg font-black text-text mb-6 flex items-center gap-3"><MessageSquare className="text-primary-light" size={20} /> Student Feedback Analysis (NLP)</h4>
+                                    <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                                        <div className="flex-1 w-full space-y-4">
+                                            <div>
+                                                <div className="flex justify-between text-xs font-black uppercase tracking-widest text-text-muted mb-1">
+                                                    <span className="text-accent">Positive Sentiment</span> <span>{feedbackSentimentSummary.positivePct}%</span>
+                                                </div>
+                                                <div className="w-full bg-surface-elevated rounded-full h-1.5 shadow-inner overflow-hidden">
+                                                    <div className="bg-accent h-full rounded-full" style={{width: `${feedbackSentimentSummary.positivePct}%`}}></div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs font-black uppercase tracking-widest text-text-muted mb-1">
+                                                    <span className="text-primary-light">Neutral Context</span> <span>{feedbackSentimentSummary.neutralPct}%</span>
+                                                </div>
+                                                <div className="w-full bg-surface-elevated rounded-full h-1.5 shadow-inner overflow-hidden">
+                                                    <div className="bg-primary-light h-full rounded-full" style={{width: `${feedbackSentimentSummary.neutralPct}%`}}></div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs font-black uppercase tracking-widest text-text-muted mb-1">
+                                                    <span className="text-danger">Critical Feedback</span> <span>{feedbackSentimentSummary.negativePct}%</span>
+                                                </div>
+                                                <div className="w-full bg-surface-elevated rounded-full h-1.5 shadow-inner overflow-hidden">
+                                                    <div className="bg-danger h-full rounded-full" style={{width: `${feedbackSentimentSummary.negativePct}%`}}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-surface/60 backdrop-blur-sm p-6 rounded-2xl border border-border/10 text-center shadow-inner min-w-[200px]">
+                                            <div className="text-5xl font-black text-text mb-2 tracking-tighter">{(score.components?.feedback || 0).toFixed(0)}%</div>
+                                            <div className="text-[10px] uppercase tracking-widest font-black text-text-secondary">Overall Satisfaction</div>
+                                        </div>
                                     </div>
                                     <div className={`rounded-[1.5rem] p-6 border flex flex-col items-center justify-center text-center hover:brightness-95 transition-all ${score.components?.low_engagement_rate > 20 ? 'bg-danger-light border-danger/30 text-danger' : 'bg-success-light border-success/30 text-success'}`}>
                                         <div className="text-4xl font-black mb-2 tracking-tighter">{(score.components?.low_engagement_rate || 0).toFixed(0)}%</div>
@@ -449,8 +561,8 @@ export default function TeachingDashboard() {
                 )}
             {/* Students List for Course Drill-Down */}
             {dashboard?.student_stats && (
-                <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border overflow-hidden mb-10 mt-10">
-                    <div className="px-10 py-8 border-b border-border bg-surface-alt flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div className="glass-premium rounded-[2.5rem] shadow-accent border border-primary/20 overflow-hidden mb-10 mt-10">
+                    <div className="px-10 py-8 border-b border-border/20 bg-surface/50 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                         <h3 className="text-2xl font-black text-text flex items-center gap-4"><Users size={28} className="text-accent" /> Course Students</h3>
                         <span className="text-xs font-black bg-surface border border-border shadow-sm text-text-secondary px-5 py-2.5 rounded-full uppercase tracking-widest">Select to view Analytics</span>
                     </div>
@@ -509,12 +621,12 @@ export default function TeachingDashboard() {
             )}
 
             {/* Lectures List for Drill-Down */}
-            <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border overflow-hidden mb-10 mt-10">
-                <div className="px-10 py-8 border-b border-border bg-surface-alt flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="glass-premium rounded-[2.5rem] shadow-accent border border-primary/20 overflow-hidden mb-10 mt-10">
+                <div className="px-10 py-8 border-b border-border/20 bg-surface/50 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <h3 className="text-2xl font-black text-text flex items-center gap-4"><Play size={28} className="text-accent" /> Course Lectures</h3>
-                    <span className="text-xs font-black bg-surface border border-border shadow-sm text-text-secondary px-5 py-2.5 rounded-full uppercase tracking-widest">Select to view Analytics</span>
+                    <span className="text-xs font-black bg-surface/50 border border-border/20 shadow-sm text-text-secondary px-5 py-2.5 rounded-full uppercase tracking-widest">Select to view Analytics</span>
                 </div>
-                <div className="divide-y divide-border">
+                <div className="divide-y divide-border/20">
                     {lectures.length === 0 ? (
                         <div className="p-16 text-center text-text-muted font-bold text-xl">No published lectures found for this course.</div>
                     ) : (lectures.map(l => (
@@ -560,6 +672,11 @@ export default function TeachingDashboard() {
                     </span>
                     <span className="bg-surface-alt border border-border shadow-sm text-text-secondary px-6 py-3 rounded-[1.5rem] font-black flex items-center gap-3 tracking-wide">
                         <Activity size={20} className="text-success" /> {lectureDashboard?.avg_engagement?.toFixed(1) || 0}% Avg Class Activity
+                    </span>
+                    <span className="glass-premium shadow-accent border-primary/20 text-text px-6 py-3 rounded-[1.5rem] font-black flex items-center gap-3 tracking-wide relative overflow-hidden">
+                        <div className="absolute inset-0 bg-primary/10"></div>
+                        <div className="w-3 h-3 rounded-full bg-accent animate-pulse shadow-[0_0_10px_var(--color-accent)]"></div> 
+                        {liveWatchers?.live_count || 0} Students Currently Active
                     </span>
                 </div>
             </div>
@@ -624,6 +741,118 @@ export default function TeachingDashboard() {
                     </table>
                 </div>
             </div>
+
+            {/* Student Feedback & NLP Analysis */}
+            {lectureFeedback && lectureFeedback.length > 0 && (
+                <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border overflow-hidden mb-10">
+                    <div className="px-10 py-8 border-b border-border bg-surface-alt">
+                        <h3 className="text-2xl font-black text-text mb-2 tracking-tight flex items-center gap-3">
+                            <MessageCircle size={28} className="text-accent" /> Student Feedback & NLP Analysis
+                        </h3>
+                        <p className="text-xs font-black text-text-muted uppercase tracking-widest">{lectureFeedback.length} responses analyzed</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-10">
+                        {/* Sentiment Aggregates */}
+                        <div className="space-y-4">
+                            <h4 className="text-lg font-black text-text mb-6">Overall Sentiment</h4>
+                            {lectureFeedback.some(f => f.sentiment) && (
+                                <div className="bg-surface-alt rounded-[1.5rem] p-6 border border-border">
+                                    {(() => {
+                                        const sentiments = lectureFeedback.filter(f => f.sentiment).map(f => f.sentiment.label);
+                                        const positive = sentiments.filter(s => s === 'positive').length;
+                                        const neutral = sentiments.filter(s => s === 'neutral').length;
+                                        const negative = sentiments.filter(s => s === 'negative').length;
+                                        const total = sentiments.length;
+                                        return (
+                                            <>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="w-4 h-4 rounded bg-success"></div>
+                                                    <div className="flex-1 flex justify-between items-center">
+                                                        <span className="text-sm font-bold text-text-secondary">Positive</span>
+                                                        <span className="font-black text-success">{positive}/{total}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="w-4 h-4 rounded bg-text-muted"></div>
+                                                    <div className="flex-1 flex justify-between items-center">
+                                                        <span className="text-sm font-bold text-text-secondary">Neutral</span>
+                                                        <span className="font-black text-text-muted">{neutral}/{total}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-4 h-4 rounded bg-danger"></div>
+                                                    <div className="flex-1 flex justify-between items-center">
+                                                        <span className="text-sm font-bold text-text-secondary">Negative</span>
+                                                        <span className="font-black text-danger">{negative}/{total}</span>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+                            <div className="bg-surface-alt rounded-[1.5rem] p-6 border border-border">
+                                <div className="text-sm font-black text-text-muted uppercase tracking-widest mb-3">Avg Rating</div>
+                                <div className="text-4xl font-black text-accent">{(lectureFeedback.reduce((sum, f) => sum + (f.overall_rating || 0), 0) / lectureFeedback.length).toFixed(1)}</div>
+                                <div className="text-xs font-semibold text-text-secondary mt-1">out of 5.0</div>
+                            </div>
+                        </div>
+
+                        {/* Keywords */}
+                        <div>
+                            <h4 className="text-lg font-black text-text mb-6">Key Themes</h4>
+                            <div className="bg-surface-alt rounded-[1.5rem] p-6 border border-border">
+                                {(() => {
+                                    const allKeywords = lectureFeedback.flatMap(f => f.keywords || []);
+                                    const keywordCounts = {};
+                                    allKeywords.forEach(kw => {
+                                        keywordCounts[kw] = (keywordCounts[kw] || 0) + 1;
+                                    });
+                                    const topKeywords = Object.entries(keywordCounts)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .slice(0, 8)
+                                        .map(([kw]) => kw);
+
+                                    return topKeywords.length > 0 ? (
+                                        <div className="flex flex-wrap gap-2">
+                                            {topKeywords.map(kw => (
+                                                <span key={kw} className="bg-accent-light text-accent px-3 py-1.5 rounded-full text-xs font-bold border border-accent/20 shadow-sm">
+                                                    {kw}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-text-muted font-semibold">No keywords extracted</p>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+
+                        {/* Sample Feedback */}
+                        <div>
+                            <h4 className="text-lg font-black text-text mb-6">Sample Feedback</h4>
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                {lectureFeedback.filter(f => f.text || f.suggestions).slice(0, 3).map((f, idx) => (
+                                    <div key={idx} className="bg-surface-alt rounded-[1rem] p-4 border border-border text-xs font-semibold text-text-secondary leading-relaxed">
+                                        <p className="line-clamp-3">"{f.text || f.suggestions}"</p>
+                                        <div className="flex gap-2 mt-2">
+                                            {f.sentiment && (
+                                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded border ${
+                                                    f.sentiment.label === 'positive' ? 'bg-success-light text-success border-success/20' :
+                                                    f.sentiment.label === 'negative' ? 'bg-danger-light text-danger border-danger/20' :
+                                                    'bg-text-muted/10 text-text-muted border-text-muted/20'
+                                                }`}>
+                                                    {f.sentiment.label}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -689,7 +918,7 @@ export default function TeachingDashboard() {
                                 <span className="font-black text-xl text-danger">{(selectedStudent.confusion_score || 0).toFixed(1)}%</span>
                             </div>
                             <div className="flex justify-between items-center bg-surface-alt p-5 rounded-2xl border border-border">
-                                <span className="font-bold text-text-secondary text-sm text-danger flex items-center gap-3"><Target size={20} /> Browser Tab Switches</span>
+                                <span className="font-bold text-danger text-sm flex items-center gap-3"><Target size={20} /> Browser Tab Switches</span>
                                 <span className="font-black text-xl text-surface bg-danger px-4 py-1 rounded-full shadow-inner">{selectedStudent.tab_switches}</span>
                             </div>
                         </div>

@@ -310,8 +310,7 @@ async def search_messages(
     current_user: User = Depends(get_current_user),
 ):
     """Search messages by content for the current user"""
-    from app.models.models import User, Course
-    
+
     result = await db.execute(
         select(Message).where(
             and_(
@@ -325,20 +324,27 @@ async def search_messages(
     )
     
     messages = result.scalars().all()
+    if not messages:
+        return []
+
+    user_ids = {m.sender_id for m in messages} | {m.receiver_id for m in messages}
+    course_ids = {m.course_id for m in messages if m.course_id}
+
+    users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+    users_map = {u.id: u for u in users_result.scalars().all()}
+
+    courses_map = {}
+    if course_ids:
+        courses_result = await db.execute(select(Course.id, Course.title).where(Course.id.in_(course_ids)))
+        courses_map = {cid: title for cid, title in courses_result.all()}
     
-    # We need to build responses with sender names
     responses = []
     for m in messages:
-        sender_result = await db.execute(select(User).where(User.id == m.sender_id))
-        sender = sender_result.scalar_one()
-        
-        receiver_result = await db.execute(select(User).where(User.id == m.receiver_id))
-        receiver = receiver_result.scalar_one()
-        
-        course_title = None
-        if m.course_id:
-            c_res = await db.execute(select(Course.title).where(Course.id == m.course_id))
-            course_title = c_res.scalar()
+        sender = users_map.get(m.sender_id)
+        receiver = users_map.get(m.receiver_id)
+        if not sender or not receiver:
+            continue
+        course_title = courses_map.get(m.course_id)
             
         responses.append(MessageResponse(
             id=m.id,

@@ -1,5 +1,6 @@
 .venv/
 .env
+.env.*
 __pycache__/
 node_modules/
 dist/
@@ -11,3 +12,5 @@ my-dataset/
 experiment_results/
 *v3_lstm_v2_output.txt
 download.txt
+smartlms-backend/debug_logs/
+smartlms-backend/.env.bak*

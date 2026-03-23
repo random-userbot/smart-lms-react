@@ -5,6 +5,7 @@ Lecture CRUD, video upload, YouTube import, transcript extraction, and materials
 
 import asyncio
 import os
+import tempfile
 from uuid import uuid4
 from datetime import datetime
 from typing import List, Optional
@@ -13,6 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+import cloudinary
+import cloudinary.uploader
 
 from app.config import settings
 from app.database import get_db
@@ -26,6 +29,18 @@ from app.services.youtube_service import (
 )
 
 router = APIRouter(prefix="/api/lectures", tags=["Lectures"])
+
+if (
+    settings.CLOUDINARY_CLOUD_NAME
+    and settings.CLOUDINARY_API_KEY
+    and settings.CLOUDINARY_API_SECRET
+):
+    cloudinary.config(
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+        api_key=settings.CLOUDINARY_API_KEY,
+        api_secret=settings.CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 
 class LectureCreate(BaseModel):
@@ -128,6 +143,66 @@ async def _save_uploaded_file(file: UploadFile, subdir: str, max_bytes: int):
         await file.close()
 
     return rel_path, size
+
+
+def _cloudinary_configured() -> bool:
+    return bool(
+        settings.CLOUDINARY_CLOUD_NAME
+        and settings.CLOUDINARY_API_KEY
+        and settings.CLOUDINARY_API_SECRET
+    )
+
+
+async def _upload_video_to_cloudinary(file: UploadFile, max_bytes: int):
+    """Upload lecture video to Cloudinary and return (secure_url, file_size)."""
+    if not _cloudinary_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.",
+        )
+
+    safe_name = _safe_filename(file.filename or "lecture_video.mp4")
+    ext = os.path.splitext(safe_name)[1] or ".mp4"
+    size = 0
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            temp_path = tmp.name
+
+        with open(temp_path, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Max {max_bytes // (1024 * 1024)} MB",
+                    )
+                out.write(chunk)
+
+        upload_result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: cloudinary.uploader.upload(
+                temp_path,
+                resource_type="video",
+                folder="smartlms/lectures",
+                use_filename=True,
+                unique_filename=True,
+            ),
+        )
+
+        secure_url = upload_result.get("secure_url")
+        if not secure_url:
+            raise HTTPException(status_code=502, detail="Cloudinary upload failed: missing secure URL")
+
+        return secure_url, size
+    finally:
+        await file.close()
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 async def _generate_lecture_transcript_background(lecture_id: str, prefer_local: bool = False):
@@ -260,8 +335,9 @@ async def upload_lecture_video(
         raise HTTPException(status_code=404, detail="Lecture not found")
 
     max_bytes = settings.MAX_VIDEO_UPLOAD_MB * 1024 * 1024
-    rel_path, file_size = await _save_uploaded_file(file, "videos", max_bytes)
-    lecture.video_url = _public_media_url(request, rel_path)
+    video_url, file_size = await _upload_video_to_cloudinary(file, max_bytes)
+    lecture.video_url = video_url
+    lecture.youtube_url = None
     await db.commit()
     await db.refresh(lecture)
 
@@ -269,7 +345,7 @@ async def upload_lecture_video(
         "lecture_id": lecture.id,
         "video_url": lecture.video_url,
         "file_size": file_size,
-        "message": "Video uploaded successfully",
+        "message": "Video uploaded to Cloudinary successfully",
     }
 
 

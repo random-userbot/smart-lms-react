@@ -1,0 +1,15 @@
+[build]
+  base = "smartlms-frontend"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Set VITE_API_URL in Netlify UI:
+# Site settings -> Environment variables -> VITE_API_URL=https://<your-backend-url>

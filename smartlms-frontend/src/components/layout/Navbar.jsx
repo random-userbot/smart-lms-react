@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useActivity } from '../../context/ActivityTracker';
 import { notificationsAPI, messagesAPI, coursesAPI } from '../../api/client';
 import {
-    Bell, User, LogOut, Settings, ChevronDown, ChevronLeft,
+    Bell, User, LogOut, Settings, ChevronDown, ChevronLeft, ChevronRight,
     BookOpen, Activity, Zap, MessageSquare, Menu, X, Search, Check, CheckCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -111,20 +111,29 @@ export default function Navbar() {
     };
 
     return (
-        <nav className="sticky top-0 z-50 w-full border-b border-border transition-colors h-16 md:h-[72px] flex items-center bg-surface/85 backdrop-blur-xl"
+        <nav className="sticky top-0 z-50 w-full border-b border-border/80 transition-colors h-16 md:h-18 flex items-center bg-surface/70 backdrop-blur-2xl"
             style={{ WebkitBackdropFilter: 'blur(20px) saturate(180%)' }}>
-            <div className="w-full px-6 md:px-10 flex items-center justify-between">
+            <div className="w-full px-4 md:px-8 lg:px-10 flex items-center justify-between">
                 
-                {/* Back Button & Logo */}
+                {/* Back/Forward Buttons & Logo */}
                 <div className="flex items-center gap-4">
-                    {user && location.pathname !== '/dashboard' && location.pathname !== '/' && (
-                        <button 
-                            onClick={() => navigate(-1)} 
-                            className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-surface-alt border border-border text-text-secondary hover:text-text hover:border-text-muted transition-all shadow-sm group"
-                            title="Go Back"
-                        >
-                            <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
-                        </button>
+                    {user && (
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => navigate(-1)} 
+                                className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-surface border border-border text-text-secondary hover:text-text hover:border-accent/40 hover:bg-accent-light/40 transition-all shadow-sm group"
+                                title="Go Back"
+                            >
+                                <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
+                            </button>
+                            <button 
+                                onClick={() => navigate(1)} 
+                                className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-surface border border-border text-text-secondary hover:text-text hover:border-accent/40 hover:bg-accent-light/40 transition-all shadow-sm group"
+                                title="Go Forward"
+                            >
+                                <ChevronRight size={20} className="group-hover:translate-x-0.5 transition-transform" />
+                            </button>
+                        </div>
                     )}
                     <Link to={user ? '/dashboard' : '/'} className="flex items-center gap-3 group">
                     <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-accent flex items-center justify-center shadow-md group-hover:shadow-accent group-hover:scale-105 transition-all duration-300">
@@ -138,7 +147,7 @@ export default function Navbar() {
 
                 {/* Search Bar */}
                 {user && (
-                    <div ref={searchRef} className="hidden lg:flex flex-1 max-w-md mx-8 relative group">
+                    <div ref={searchRef} className="hidden lg:flex flex-1 max-w-md mx-6 relative group">
                         <input
                             type="text"
                             placeholder="Search courses, materials..."
@@ -146,11 +155,11 @@ export default function Navbar() {
                             onChange={handleSearch}
                             onKeyDown={handleSearchSubmit}
                             onFocus={() => searchQuery.trim().length > 1 && setShowSearchResults(true)}
-                            className="w-full pl-6 pr-12 py-2.5 bg-surface-alt border border-border rounded-xl focus:ring-4 focus:ring-accent/20 focus:border-accent outline-none text-sm font-medium transition-all placeholder-text-muted text-text"
+                            className="w-full pl-6 pr-12 py-2.5 bg-surface border border-border rounded-xl focus:ring-4 focus:ring-accent/20 focus:border-accent outline-none text-sm font-medium transition-all placeholder-text-muted text-text shadow-sm"
                         />
                         <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-accent transition-colors pointer-events-none z-10" />
                         {showSearchResults && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-surface rounded-2xl border border-border shadow-2xl z-50 py-3 px-2 max-h-64 overflow-y-auto">
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-surface rounded-2xl border border-border shadow-xl z-50 py-3 px-2 max-h-64 overflow-y-auto">
                                 <p className="text-xs font-bold text-text-muted px-3 mb-2">Press Enter to search for "{searchQuery}"</p>
                                 <button onClick={() => { navigate(`/search?q=${encodeURIComponent(searchQuery)}`); setShowSearchResults(false); }} className="w-full text-left px-3 py-2.5 text-sm font-semibold text-text hover:bg-accent-light hover:text-accent rounded-xl transition-colors flex items-center gap-2">
                                     <Search size={16} /> Search Everywhere
@@ -164,7 +173,7 @@ export default function Navbar() {
                 )}
 
                 {/* Right Actions */}
-                <div className="flex items-center gap-2 md:gap-5 ml-auto">
+                    <div className="flex items-center gap-2 md:gap-4 ml-auto">
                     
                     <div className="hidden sm:block">
                         <ThemeToggle />
@@ -190,14 +199,14 @@ export default function Navbar() {
                             )}
 
                             {/* Icon Buttons */}
-                            <button
-                                className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light transition-all relative"
+                                <button
+                                    className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light/60 border border-transparent hover:border-accent/25 transition-all relative"
                                 onClick={() => navigate('/messages')}
                                 title="Messages"
                             >
                                 <MessageSquare size={19} strokeWidth={2} />
                                 {unreadMessages > 0 && (
-                                    <span className="absolute top-1 right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-danger text-white text-[9px] font-black rounded-full border-2 border-surface">
+                                    <span className="absolute top-1 right-1 min-w-4 h-4 flex items-center justify-center bg-danger text-white text-[9px] font-black rounded-full border-2 border-surface">
                                         {unreadMessages > 9 ? '9+' : unreadMessages}
                                     </span>
                                 )}
@@ -205,13 +214,13 @@ export default function Navbar() {
 
                             <div ref={notifRef} className="relative">
                                 <button
-                                    className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light transition-all relative"
+                                    className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent hover:bg-accent-light/60 border border-transparent hover:border-accent/25 transition-all relative"
                                     onClick={openNotifications}
                                     title="Notifications"
                                 >
                                     <Bell size={19} strokeWidth={2} />
                                     {unreadCount > 0 && (
-                                        <span className="absolute top-1 right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-danger text-white text-[9px] font-black rounded-full border-2 border-surface">
+                                        <span className="absolute top-1 right-1 min-w-4 h-4 flex items-center justify-center bg-danger text-white text-[9px] font-black rounded-full border-2 border-surface">
                                             {unreadCount > 9 ? '9+' : unreadCount}
                                         </span>
                                     )}
@@ -220,7 +229,7 @@ export default function Navbar() {
                                 <AnimatePresence>
                                     {notifOpen && (
                                         <motion.div
-                                            className="absolute right-0 mt-2 w-80 md:w-96 bg-surface rounded-2xl shadow-2xl border border-border z-50 origin-top-right max-h-[420px] flex flex-col"
+                                            className="absolute right-0 mt-2 w-80 md:w-96 bg-surface rounded-2xl shadow-xl border border-border z-50 origin-top-right max-h-105 flex flex-col"
                                             initial={{ opacity: 0, scale: 0.95, y: -8 }}
                                             animate={{ opacity: 1, scale: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.95, y: -8 }}
@@ -271,12 +280,12 @@ export default function Navbar() {
                             <div ref={dropdownRef} className="relative ml-1">
                                 <button
                                     onClick={() => setDropdownOpen(!dropdownOpen)}
-                                    className="flex items-center gap-2.5 pl-1 pr-3 py-1 border border-border rounded-xl hover:bg-surface-alt hover:border-accent/30 transition-all focus:ring-2 focus:ring-accent/20 outline-none bg-surface"
+                                    className="flex items-center gap-2.5 pl-1 pr-3 py-1 border border-border rounded-xl hover:bg-surface-alt hover:border-accent/35 transition-all focus:ring-2 focus:ring-accent/20 outline-none bg-surface shadow-sm"
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-accent text-white font-bold flex items-center justify-center text-sm shadow-sm">
                                         {user.full_name?.charAt(0)?.toUpperCase() || 'U'}
                                     </div>
-                                    <div className="flex flex-col items-start pr-0.5 hidden lg:flex">
+                                    <div className="hidden lg:flex lg:flex-col items-start pr-0.5">
                                       <span className="text-sm font-bold text-text leading-tight">
                                           {user.full_name?.split(' ')[0]}
                                       </span>
@@ -290,7 +299,7 @@ export default function Navbar() {
                                 <AnimatePresence>
                                     {dropdownOpen && (
                                         <motion.div 
-                                            className="absolute right-0 mt-2 w-60 bg-surface rounded-2xl shadow-2xl border border-border py-2 z-50 origin-top-right"
+                                            className="absolute right-0 mt-2 w-60 bg-surface rounded-2xl shadow-xl border border-border py-2 z-50 origin-top-right"
                                             initial={{ opacity: 0, scale: 0.95, y: -8 }}
                                             animate={{ opacity: 1, scale: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.95, y: -8 }}
@@ -344,7 +353,7 @@ export default function Navbar() {
             <AnimatePresence>
                 {mobileMenuOpen && (
                     <motion.div 
-                        className="absolute top-[100%] left-0 w-full bg-surface border-b border-border shadow-xl p-4 md:hidden flex flex-col gap-4 z-40"
+                        className="absolute top-full left-0 w-full bg-surface border-b border-border shadow-lg p-4 md:hidden flex flex-col gap-4 z-40"
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}

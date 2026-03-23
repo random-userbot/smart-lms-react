@@ -52,14 +52,14 @@ export default function Sidebar() {
 
     return (
         <motion.aside
-            className={`shrink-0 bg-surface border-r border-border h-full flex flex-col py-6 overflow-y-auto overflow-x-hidden hidden xl:flex transition-all duration-300 ease-in-out relative`}
+            className={`shrink-0 bg-surface/80 backdrop-blur-xl border-r border-border h-full flex flex-col py-6 overflow-y-auto overflow-x-hidden hidden xl:flex transition-all duration-300 ease-in-out relative`}
             animate={{ width: collapsed ? 80 : 280 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
             {/* Toggle Button */}
             <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="absolute top-4 right-3 w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-accent hover:bg-accent-light transition-all z-10"
+                className="absolute top-4 right-3 w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-accent hover:bg-accent-light/70 transition-all z-10 border border-transparent hover:border-accent/25"
                 title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
                 {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
@@ -76,10 +76,10 @@ export default function Sidebar() {
                         to={link.to}
                         title={collapsed ? link.label : undefined}
                         className={({ isActive }) =>
-                            `flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-2' : 'px-5'} py-4 rounded-2xl text-[17px] font-semibold transition-all duration-200 group relative ${
+                            `flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-2' : 'px-5'} py-4 rounded-2xl text-[17px] font-semibold transition-all duration-200 group relative border ${
                                 isActive
-                                    ? 'bg-accent-light text-accent font-bold'
-                                    : 'text-text-secondary hover:bg-surface-alt hover:text-text'
+                                    ? 'bg-accent-light/80 text-accent font-bold border-accent/25'
+                                    : 'text-text-secondary border-transparent hover:bg-surface-alt hover:text-text hover:border-border'
                             }`
                         }
                     >
@@ -107,8 +107,8 @@ export default function Sidebar() {
                         <div className="px-4 py-2 text-[11px] font-black text-text-muted uppercase tracking-[0.15em] mb-2">Learning</div>
                     )}
                     <NavLink to="/ai-tutor" title={collapsed ? 'AI Tutor' : undefined} className={({ isActive }) =>
-                        `flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-2' : 'px-5'} py-4 rounded-2xl text-[17px] font-semibold transition-all group relative ${
-                            isActive ? 'bg-accent-light text-accent font-bold' : 'text-text-secondary hover:bg-surface-alt hover:text-text'
+                        `flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-2' : 'px-5'} py-4 rounded-2xl text-[17px] font-semibold transition-all group relative border ${
+                            isActive ? 'bg-accent-light/80 text-accent font-bold border-accent/25' : 'text-text-secondary border-transparent hover:bg-surface-alt hover:text-text hover:border-border'
                         }`
                     }>
                         {({ isActive }) => (
@@ -131,8 +131,8 @@ export default function Sidebar() {
                         )}
                     </NavLink>
                     <NavLink to="/leaderboard" title={collapsed ? 'Leaderboard' : undefined} className={({ isActive }) =>
-                        `flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-2' : 'px-5'} py-4 rounded-2xl text-[17px] font-semibold transition-all group relative ${
-                            isActive ? 'bg-accent-light text-accent font-bold' : 'text-text-secondary hover:bg-surface-alt hover:text-text'
+                        `flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-2' : 'px-5'} py-4 rounded-2xl text-[17px] font-semibold transition-all group relative border ${
+                            isActive ? 'bg-accent-light/80 text-accent font-bold border-accent/25' : 'text-text-secondary border-transparent hover:bg-surface-alt hover:text-text hover:border-border'
                         }`
                     }>
                         {({ isActive }) => (
@@ -155,7 +155,7 @@ export default function Sidebar() {
             {/* Gamification card */}
             {user.role === 'student' && gamification && !collapsed && (
                 <div className="mt-auto pt-6 px-4">
-                    <div className="p-5 rounded-2xl border border-border text-center relative overflow-hidden group bg-accent-light">
+                    <div className="p-5 rounded-2xl border border-border text-center relative overflow-hidden group bg-accent-light/70 shadow-sm">
                         <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                         <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Your Level</div>
                         <div className="text-3xl font-black text-accent leading-tight">{gamification.level}</div>

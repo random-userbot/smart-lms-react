@@ -1,25 +1,83 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const GET_CACHE = new Map();
+const DEFAULT_CACHE_TTL = 30 * 1000;
+
+const serializeParams = (params) => {
+    if (!params) return '';
+    const entries = Object.entries(params)
+        .filter(([, value]) => value !== undefined && value !== null)
+        .sort(([a], [b]) => a.localeCompare(b));
+    return entries.map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(',') : String(v)}`).join('&');
+};
+
+const cacheKeyForGet = (url, config = {}) => `${url}?${serializeParams(config.params)}`;
+
+const clearGetCache = () => {
+    GET_CACHE.clear();
+};
+
+const dispatchLoadingStart = () => {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:loading:start'));
+    }
+};
+
+const dispatchLoadingEnd = () => {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:loading:end'));
+    }
+};
 
 const api = axios.create({
     baseURL: API_BASE_URL,
     headers: { 'Content-Type': 'application/json' },
 });
 
+const cachedGet = (url, config = {}, ttl = DEFAULT_CACHE_TTL) => {
+    const skipCache = config?.meta?.skipCache;
+    const key = cacheKeyForGet(url, config);
+
+    if (!skipCache) {
+        const cached = GET_CACHE.get(key);
+        if (cached && cached.expiresAt > Date.now()) {
+            return Promise.resolve(cached.response);
+        }
+    }
+
+    return api.get(url, config).then((response) => {
+        if (!skipCache) {
+            GET_CACHE.set(key, {
+                expiresAt: Date.now() + ttl,
+                response,
+            });
+        }
+        return response;
+    });
+};
+
 // Attach JWT token to every request
 api.interceptors.request.use((config) => {
+    dispatchLoadingStart();
     const token = localStorage.getItem('token');
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
+        clearGetCache();
     }
     return config;
 });
 
 // Handle 401 responses
 api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        dispatchLoadingEnd();
+        return response;
+    },
     (error) => {
+        dispatchLoadingEnd();
         if (error.response?.status === 401) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -42,20 +100,20 @@ export const authAPI = {
 
 // ─── Courses ────────────────────────────────────────────
 export const coursesAPI = {
-    list: (params) => api.get('/api/courses', { params }),
-    get: (id) => api.get(`/api/courses/${id}`),
+    list: (params) => cachedGet('/api/courses', { params }),
+    get: (id) => cachedGet(`/api/courses/${id}`),
     create: (data) => api.post('/api/courses', data),
     update: (id, data) => api.put(`/api/courses/${id}`, data),
     delete: (id) => api.delete(`/api/courses/${id}`),
     enroll: (id) => api.post(`/api/courses/${id}/enroll`),
     getStudents: (id) => api.get(`/api/courses/${id}/students`),
-    getMyCourses: () => api.get('/api/courses/enrolled/my-courses'),
+    getMyCourses: () => cachedGet('/api/courses/enrolled/my-courses'),
 };
 
 // ─── Lectures ───────────────────────────────────────────
 export const lecturesAPI = {
-    getByCourse: (courseId) => api.get(`/api/lectures/course/${courseId}`),
-    get: (id) => api.get(`/api/lectures/${id}`),
+    getByCourse: (courseId) => cachedGet(`/api/lectures/course/${courseId}`),
+    get: (id) => cachedGet(`/api/lectures/${id}`),
     create: (data) => api.post('/api/lectures', data),
     update: (id, data) => api.put(`/api/lectures/${id}`, data),
     uploadVideo: (lectureId, formData) => api.post(`/api/lectures/${lectureId}/upload-video`, formData, {
@@ -63,8 +121,8 @@ export const lecturesAPI = {
     }),
     delete: (id) => api.delete(`/api/lectures/${id}`),
     importYouTube: (data) => api.post('/api/lectures/youtube-import', data),
-    getMaterials: (id) => api.get(`/api/lectures/${id}/materials`),
-    getCourseMaterials: (courseId) => api.get(`/api/lectures/course/${courseId}/materials`),
+    getMaterials: (id) => cachedGet(`/api/lectures/${id}/materials`),
+    getCourseMaterials: (courseId) => cachedGet(`/api/lectures/course/${courseId}/materials`),
     addMaterial: (data) => api.post('/api/lectures/materials', data, {
         headers: { 'Content-Type': 'multipart/form-data' },
     }),
@@ -78,6 +136,7 @@ export const engagementAPI = {
     getStudentSummary: (studentId) => api.get(`/api/engagement/student-summary/${studentId}`),
     getHeatmap: (lectureId, params) => api.get(`/api/engagement/heatmap/${lectureId}`, { params }),
     getMyHeatmap: (lectureId) => api.get(`/api/engagement/heatmap/${lectureId}/me`),
+    getLiveWatchers: (lectureId, params) => api.get(`/api/engagement/live-watchers/${lectureId}`, { params }),
     getModelInfo: () => api.get('/api/engagement/model-info'),
     listModels: () => api.get('/api/engagement/models'),
     inferModel: (data) => api.post('/api/engagement/models/infer', data),
@@ -85,8 +144,8 @@ export const engagementAPI = {
 
 // ─── Quizzes ────────────────────────────────────────────
 export const quizzesAPI = {
-    getByLecture: (lectureId) => api.get(`/api/quizzes/lecture/${lectureId}`),
-    getMine: () => api.get('/api/quizzes/mine'),
+    getByLecture: (lectureId) => cachedGet(`/api/quizzes/lecture/${lectureId}`),
+    getMine: () => cachedGet('/api/quizzes/mine'),
     create: (data) => api.post('/api/quizzes', data),
     update: (id, data) => api.put(`/api/quizzes/${id}`, data),
     delete: (id) => api.delete(`/api/quizzes/${id}`),
@@ -105,8 +164,8 @@ export const feedbackAPI = {
 
 // ─── Notifications ──────────────────────────────────────
 export const notificationsAPI = {
-    list: (params) => api.get('/api/notifications', { params }),
-    getUnreadCount: () => api.get('/api/notifications/unread-count'),
+    list: (params) => cachedGet('/api/notifications', { params }, 10 * 1000),
+    getUnreadCount: () => cachedGet('/api/notifications/unread-count', {}, 10 * 1000),
     markRead: (id) => api.put(`/api/notifications/${id}/read`),
     markAllRead: () => api.put('/api/notifications/read-all'),
     announce: (data) => api.post('/api/notifications/announce', data),
@@ -114,10 +173,11 @@ export const notificationsAPI = {
 
 // ─── Analytics ──────────────────────────────────────────
 export const analyticsAPI = {
-    getTeachingScore: (courseId) => api.get(`/api/analytics/teaching-score/${courseId}`),
-    getCourseDashboard: (courseId) => api.get(`/api/analytics/course-dashboard/${courseId}`),
-    getLectureDashboard: (lectureId) => api.get(`/api/analytics/lecture-dashboard/${lectureId}`),
-    getStudentDashboard: () => api.get('/api/analytics/student-dashboard'),
+    getTeachingScore: (courseId) => cachedGet(`/api/analytics/teaching-score/${courseId}`),
+    getCourseDashboard: (courseId) => cachedGet(`/api/analytics/course-dashboard/${courseId}`),
+    getLectureDashboard: (lectureId) => cachedGet(`/api/analytics/lecture-dashboard/${lectureId}`),
+    getStudentDashboard: () => cachedGet('/api/analytics/student-dashboard'),
+    getStudentEngagementHistory: (limit = 120) => cachedGet('/api/analytics/student-engagement-history', { params: { limit } }),
 };
 
 // ─── Admin ──────────────────────────────────────────────
@@ -133,17 +193,17 @@ export const adminAPI = {
 
 // ─── Users ──────────────────────────────────────────────
 export const usersAPI = {
-    getActivityHistory: () => api.get('/api/users/activity-history'),
-    getEngagementHistory: () => api.get('/api/users/engagement-history'),
-    getFeedbackHistory: () => api.get('/api/users/feedback-history'),
-    exportData: () => api.get('/api/users/export-data'),
+    getActivityHistory: () => cachedGet('/api/users/activity-history'),
+    getEngagementHistory: () => cachedGet('/api/users/engagement-history'),
+    getFeedbackHistory: () => cachedGet('/api/users/feedback-history'),
+    exportData: () => cachedGet('/api/users/export-data'),
 };
 
 // ─── Gamification ───────────────────────────────────────
 export const gamificationAPI = {
-    getProfile: () => api.get('/api/gamification/profile'),
+    getProfile: () => cachedGet('/api/gamification/profile', {}, 15 * 1000),
     awardPoints: (activity, amount) => api.post(`/api/gamification/award-points?activity=${activity}&amount=${amount}`),
-    getLeaderboard: () => api.get('/api/gamification/leaderboard'),
+    getLeaderboard: () => cachedGet('/api/gamification/leaderboard', {}, 15 * 1000),
 };
 
 // ─── Assignments ────────────────────────────────────────
@@ -158,9 +218,9 @@ export const assignmentsAPI = {
 // ─── Messages ───────────────────────────────────────────
 export const messagesAPI = {
     send: (data) => api.post('/api/messages', data),
-    getConversations: () => api.get('/api/messages/conversations'),
+    getConversations: () => cachedGet('/api/messages/conversations', {}, 10 * 1000),
     getWith: (userId, params) => api.get(`/api/messages/with/${userId}`, { params }),
-    getUnreadCount: () => api.get('/api/messages/unread-count'),
+    getUnreadCount: () => cachedGet('/api/messages/unread-count', {}, 10 * 1000),
     search: (params) => api.get('/api/messages/search', { params }),
     markRead: (id) => api.put(`/api/messages/${id}/read`),
     getStudentAnalytics: (studentId, courseId) => api.get(`/api/messages/student-analytics/${studentId}`, { params: { course_id: courseId } }),

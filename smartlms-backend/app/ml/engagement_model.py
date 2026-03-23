@@ -120,18 +120,36 @@ class EngagementFeatureExtractor:
             else:
                 get = lambda k, d=0: getattr(f, k, d)
 
-            ear_l = get("eye_aspect_ratio_left", 0.25)
-            ear_r = get("eye_aspect_ratio_right", 0.25)
+            def pick(keys, default=0.0):
+                for k in keys:
+                    val = get(k, None)
+                    if val is not None:
+                        return val
+                return default
+
+            ear_l = float(pick(["eye_aspect_ratio_left"], 0.25))
+            ear_r = float(pick(["eye_aspect_ratio_right"], 0.25))
             ear_vals.append((ear_l + ear_r) / 2.0)
-            gaze_vals.append(get("gaze_score", 0.5))
-            mouth_vals.append(get("mouth_openness", 0.0))
-            au01 = get("au01_inner_brow_raise", 0.0)
-            au04 = get("au04_brow_lowerer", 0.0)
+
+            gaze_raw = pick(["gaze_score"], None)
+            if gaze_raw is None:
+                gx = float(pick(["gaze_angle_x"], 0.0))
+                gy = float(pick(["gaze_angle_y"], 0.0))
+                # Approximate screen-looking score from gaze angle magnitude.
+                gaze = max(0.0, 1.0 - (np.sqrt(gx * gx + gy * gy) / 30.0))
+            else:
+                gaze = float(gaze_raw)
+            gaze_vals.append(gaze)
+
+            mouth_vals.append(float(pick(["mouth_openness", "au25_lips_part"], 0.0)))
+            au01 = float(pick(["au01_inner_brow_raise", "AU01_r"], 0.0))
+            au04 = float(pick(["au04_brow_lowerer", "AU04_r"], 0.0))
             brow_vals.append(au01 - au04)
-            stability_vals.append(get("head_pose_stability", 0.5))
-            yaw_vals.append(abs(get("head_pose_yaw", 0.0)))
-            pitch_vals.append(abs(get("head_pose_pitch", 0.0)))
-            roll_vals.append(abs(get("head_pose_roll", 0.0)))
+
+            stability_vals.append(float(pick(["head_pose_stability"], 0.5)))
+            yaw_vals.append(abs(float(pick(["head_pose_yaw", "pose_Ry"], 0.0))))
+            pitch_vals.append(abs(float(pick(["head_pose_pitch", "pose_Rx"], 0.0))))
+            roll_vals.append(abs(float(pick(["head_pose_roll", "pose_Rz"], 0.0))))
 
         feats = []
         for vals in [ear_vals, gaze_vals, mouth_vals, brow_vals,
@@ -171,28 +189,51 @@ class EngagementFeatureExtractor:
             return np.zeros(NUM_FEATURES, dtype=np.float32)
 
         n = len(features_list)
-        au01 = np.mean([f.get("au01_inner_brow_raise", 0) for f in features_list])
-        au02 = np.mean([f.get("au02_outer_brow_raise", 0) for f in features_list])
-        au04 = np.mean([f.get("au04_brow_lowerer", 0) for f in features_list])
-        au06 = np.mean([f.get("au06_cheek_raiser", 0) for f in features_list])
-        au12 = np.mean([f.get("au12_lip_corner_puller", 0) for f in features_list])
-        au15 = np.mean([f.get("au15_lip_corner_depressor", 0) for f in features_list])
-        au25 = np.mean([f.get("au25_lips_part", 0) for f in features_list])
-        au26 = np.mean([f.get("au26_jaw_drop", 0) for f in features_list])
-        gaze_scores = [f.get("gaze_score", 0.5) for f in features_list]
+
+        def pick(frame: dict, keys, default=0.0):
+            for k in keys:
+                val = frame.get(k, None)
+                if val is not None:
+                    return val
+            return default
+
+        au01 = np.mean([pick(f, ["au01_inner_brow_raise", "AU01_r"], 0) for f in features_list])
+        au02 = np.mean([pick(f, ["au02_outer_brow_raise", "AU02_r"], 0) for f in features_list])
+        au04 = np.mean([pick(f, ["au04_brow_lowerer", "AU04_r"], 0) for f in features_list])
+        au06 = np.mean([pick(f, ["au06_cheek_raiser", "AU06_r"], 0) for f in features_list])
+        au12 = np.mean([pick(f, ["au12_lip_corner_puller", "AU12_r"], 0) for f in features_list])
+        au15 = np.mean([pick(f, ["au15_lip_corner_depressor", "AU15_r"], 0) for f in features_list])
+        au25 = np.mean([pick(f, ["au25_lips_part", "AU25_r"], 0) for f in features_list])
+        au26 = np.mean([pick(f, ["au26_jaw_drop", "AU26_r"], 0) for f in features_list])
+
+        gaze_scores = []
+        for f in features_list:
+            g = f.get("gaze_score", None)
+            if g is None:
+                gx = float(pick(f, ["gaze_angle_x"], 0.0))
+                gy = float(pick(f, ["gaze_angle_y"], 0.0))
+                g = max(0.0, 1.0 - (np.sqrt(gx * gx + gy * gy) / 30.0))
+            gaze_scores.append(float(g))
+
         gaze_score = np.mean(gaze_scores)
-        head_yaw = np.mean([abs(f.get("head_pose_yaw", 0)) for f in features_list])
-        head_pitch = np.mean([abs(f.get("head_pose_pitch", 0)) for f in features_list])
-        head_roll = np.mean([abs(f.get("head_pose_roll", 0)) for f in features_list])
-        head_stab_values = [f.get("head_pose_stability", 0.5) for f in features_list]
+        head_yaw = np.mean([abs(pick(f, ["head_pose_yaw", "pose_Ry"], 0)) for f in features_list])
+        head_pitch = np.mean([abs(pick(f, ["head_pose_pitch", "pose_Rx"], 0)) for f in features_list])
+        head_roll = np.mean([abs(pick(f, ["head_pose_roll", "pose_Rz"], 0)) for f in features_list])
+        head_stab_values = [pick(f, ["head_pose_stability"], 0.5) for f in features_list]
         head_stability = np.mean(head_stab_values)
         ear_avg = np.mean([
-            (f.get("eye_aspect_ratio_left", 0.25) + f.get("eye_aspect_ratio_right", 0.25)) / 2
+            (pick(f, ["eye_aspect_ratio_left"], 0.25) + pick(f, ["eye_aspect_ratio_right"], 0.25)) / 2
             for f in features_list
         ])
-        blink_values = [f.get("blink_rate", 15) for f in features_list]
+        blink_values = []
+        for f in features_list:
+            blink = f.get("blink_rate", None)
+            if blink is None:
+                blink = float(pick(f, ["au45_blink", "AU45_r"], 0.0)) * 6.0
+            blink_values.append(float(blink))
+
         blink_rate = np.mean(blink_values)
-        mouth = np.mean([f.get("mouth_openness", 0) for f in features_list])
+        mouth = np.mean([pick(f, ["mouth_openness", "au25_lips_part", "AU25_r"], 0) for f in features_list])
         keyboard_pct = sum(1 for f in features_list if f.get("keyboard_active", False)) / n
         mouse_pct = sum(1 for f in features_list if f.get("mouse_active", False)) / n
         tab_pct = sum(1 for f in features_list if f.get("tab_visible", True)) / n

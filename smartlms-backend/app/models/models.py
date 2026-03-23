@@ -69,7 +69,7 @@ class User(Base):
     username = Column(String(100), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.STUDENT)
+    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.STUDENT, index=True)
     full_name = Column(String(255), nullable=False)
     avatar_url = Column(String(500), nullable=True)
     bio = Column(Text, nullable=True)
@@ -115,6 +115,11 @@ class Course(Base):
     materials = relationship("Material", back_populates="course", cascade="all, delete-orphan")
     assignments = relationship("Assignment", back_populates="course", cascade="all, delete-orphan")
     teaching_scores = relationship("TeachingScore", back_populates="course", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_course_teacher", "teacher_id"),
+        Index("idx_course_published_created", "is_published", "created_at"),
+    )
 
 
 # ─── Enrollments ─────────────────────────────────────────
@@ -165,6 +170,11 @@ class Lecture(Base):
     materials = relationship("Material", back_populates="lecture")
     attendance_records = relationship("Attendance", back_populates="lecture", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        Index("idx_lecture_course_order", "course_id", "order_index"),
+        Index("idx_lecture_course_published", "course_id", "is_published"),
+    )
+
 
 # ─── Materials ───────────────────────────────────────────
 
@@ -183,6 +193,11 @@ class Material(Base):
     # Relationships
     course = relationship("Course", back_populates="materials")
     lecture = relationship("Lecture", back_populates="materials")
+
+    __table_args__ = (
+        Index("idx_material_course_created", "course_id", "created_at"),
+        Index("idx_material_lecture", "lecture_id"),
+    )
 
 
 # ─── Quizzes ─────────────────────────────────────────────
@@ -208,6 +223,11 @@ class Quiz(Base):
     lecture = relationship("Lecture", back_populates="quizzes")
     attempts = relationship("QuizAttempt", back_populates="quiz", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        Index("idx_quiz_lecture_published", "lecture_id", "is_published"),
+        Index("idx_quiz_created", "created_at"),
+    )
+
 
 class QuizAttempt(Base):
     __tablename__ = "quiz_attempts"
@@ -228,6 +248,11 @@ class QuizAttempt(Base):
     # Relationships
     student = relationship("User", back_populates="quiz_attempts")
     quiz = relationship("Quiz", back_populates="attempts")
+
+    __table_args__ = (
+        Index("idx_quiz_attempt_student_completed", "student_id", "completed_at"),
+        Index("idx_quiz_attempt_quiz_student", "quiz_id", "student_id"),
+    )
 
 
 # ─── Engagement ──────────────────────────────────────────
@@ -321,6 +346,11 @@ class Feedback(Base):
     student = relationship("User", back_populates="feedbacks")
     lecture = relationship("Lecture", back_populates="feedbacks")
 
+    __table_args__ = (
+        Index("idx_feedback_course_created", "course_id", "created_at"),
+        Index("idx_feedback_student_lecture", "student_id", "lecture_id"),
+    )
+
 
 # ─── Assignments ─────────────────────────────────────────
 
@@ -389,6 +419,11 @@ class TeachingScore(Base):
     # Relationships
     course = relationship("Course", back_populates="teaching_scores")
 
+    __table_args__ = (
+        Index("idx_teaching_score_teacher_calculated", "teacher_id", "calculated_at"),
+        Index("idx_teaching_score_course_calculated", "course_id", "calculated_at"),
+    )
+
 
 # ─── Attendance ──────────────────────────────────────────
 
@@ -405,6 +440,11 @@ class Attendance(Base):
 
     # Relationships
     lecture = relationship("Lecture", back_populates="attendance_records")
+
+    __table_args__ = (
+        Index("idx_attendance_lecture_student", "lecture_id", "student_id"),
+        Index("idx_attendance_student_joined", "student_id", "joined_at"),
+    )
 
 
 # ─── Notifications ───────────────────────────────────────
@@ -424,6 +464,11 @@ class Notification(Base):
 
     # Relationships
     user = relationship("User", back_populates="notifications", foreign_keys=[user_id])
+
+    __table_args__ = (
+        Index("idx_notification_user_read_created", "user_id", "is_read", "created_at"),
+        Index("idx_notification_sender", "sender_id"),
+    )
 
 
 # ─── Activity Logs ───────────────────────────────────────
@@ -482,6 +527,11 @@ class ICAPLog(Base):
     # evidence: {keyboard_activity, quiz_score, note_taking, interaction_count, ...}
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    __table_args__ = (
+        Index("idx_icap_student_created", "student_id", "created_at"),
+        Index("idx_icap_lecture_created", "lecture_id", "created_at"),
+    )
+
 
 # ─── Messages ────────────────────────────────────────────
 
@@ -512,6 +562,7 @@ class Message(Base):
         Index("idx_message_sender", "sender_id"),
         Index("idx_message_course", "course_id"),
         Index("idx_message_created", "created_at"),
+        Index("idx_message_conversation_created", "sender_id", "receiver_id", "created_at"),
     )
 
 
@@ -531,6 +582,10 @@ class AITutorSession(Base):
     student = relationship("User")
     messages = relationship("AITutorMessage", back_populates="session", cascade="all, delete-orphan", order_by="AITutorMessage.created_at")
 
+    __table_args__ = (
+        Index("idx_ai_tutor_session_student_updated", "student_id", "updated_at"),
+    )
+
 
 class AITutorMessage(Base):
     __tablename__ = "ai_tutor_messages"
@@ -543,3 +598,7 @@ class AITutorMessage(Base):
 
     # Relationships
     session = relationship("AITutorSession", back_populates="messages")
+
+    __table_args__ = (
+        Index("idx_ai_tutor_message_session_created", "session_id", "created_at"),
+    )

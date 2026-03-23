@@ -24,6 +24,8 @@ const YouTubePlayer = ({
     onPlaybackRateChange,
     lectureTitle = "",
     engagementScore = null,
+    modelLabel = null,
+    hybridCatalog = null,
 }) => {
     const containerRef = useRef(null);
     const playerRef = useRef(null);
@@ -49,7 +51,19 @@ const YouTubePlayer = ({
 
     useEffect(() => {
         const onChange = () => {
-            setIsFullscreen(document.fullscreenElement === containerRef.current);
+            const fsEl = document.fullscreenElement;
+
+            // If fullscreen is triggered on a nested element (e.g. YouTube iframe),
+            // force it back to our container so custom overlays (PiP camera) remain visible.
+            if (fsEl && containerRef.current && fsEl !== containerRef.current) {
+                Promise.resolve()
+                    .then(() => document.exitFullscreen())
+                    .then(() => containerRef.current?.requestFullscreen?.())
+                    .catch((err) => console.warn('Failed to normalize fullscreen target', err));
+                return;
+            }
+
+            setIsFullscreen(fsEl === containerRef.current);
         };
         document.addEventListener('fullscreenchange', onChange);
         return () => document.removeEventListener('fullscreenchange', onChange);
@@ -71,6 +85,22 @@ const YouTubePlayer = ({
         const newState = !playing;
         setPlaying(newState);
         if (onPlayPause) onPlayPause(newState);
+    };
+
+    const handlePlayerPlay = () => {
+        setPlaying(true);
+        if (onPlayPause) onPlayPause(true);
+    };
+
+    const handlePlayerPause = () => {
+        setPlaying(false);
+        if (onPlayPause) onPlayPause(false);
+    };
+
+    const handlePlayerEnded = () => {
+        setPlaying(false);
+        if (onPlayPause) onPlayPause(false);
+        if (onEnded) onEnded();
     };
 
     const handleProgress = (state) => {
@@ -142,7 +172,9 @@ const YouTubePlayer = ({
                                 height="100%"
                                 onProgress={handleProgress}
                                 onDuration={handleDuration}
-                                onEnded={onEnded}
+                                onPlay={handlePlayerPlay}
+                                onPause={handlePlayerPause}
+                                onEnded={handlePlayerEnded}
                                 onError={(error) => {
                                     console.error('Video playback error:', error);
                                     setPlayerError(true);
@@ -155,7 +187,9 @@ const YouTubePlayer = ({
                                             modestbranding: 1,
                                             rel: 0,
                                             controls: 1,
-                                            playsinline: 1
+                                            playsinline: 1,
+                                            fs: 0,
+                                            disablekb: 1
                                         }
                                     }
                                 }}
@@ -224,14 +258,18 @@ const YouTubePlayer = ({
             <EngagementCamera
                 onFeaturesReady={onCameraFeaturesReady}
                 autoStart={playing}
-                shouldRun={playing}
+                shouldRun={playing || isFullscreen}
                 engagementScore={engagementScore}
                 alerts={liveAlerts}
                 fullscreenOverlay={isFullscreen}
+                modelLabel={modelLabel}
+                latestFeatures={latestFeatures}
+                hybridCatalog={hybridCatalog}
             />
 
             <style dangerouslySetInnerHTML={{ __html: `
                 .smart-player-container {
+                    position: relative;
                     width: 100%;
                     border-radius: 24px;
                     background: #0f172a;

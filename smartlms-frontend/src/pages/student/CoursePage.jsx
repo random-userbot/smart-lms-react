@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { coursesAPI, lecturesAPI } from '../../api/client';
 import { Play, FileText, Clock, Users, ChevronRight, BookOpen } from 'lucide-react';
 import { useActivity } from '../../context/ActivityTracker';
+import { CoursePageSkeleton } from '../../components/ui/PageSkeletons';
 
 export default function CoursePage() {
     const { courseId } = useParams();
@@ -26,33 +27,37 @@ export default function CoursePage() {
         }).finally(() => setLoading(false));
     }, [courseId]);
 
-    if (loading) return <div className="page-container flex items-center justify-center min-h-[50vh]"><div className="w-12 h-12 border-4 border-accent-light border-t-accent rounded-full animate-spin" /></div>;
+    if (loading) return <CoursePageSkeleton />;
     if (!course) return <div className="page-container text-center pt-24 text-text-muted font-bold text-2xl">Course not found</div>;
 
     return (
-        <div className="max-w-[1280px] mx-auto px-6 py-12 space-y-12 animate-in fade-in">
+        <div className="min-h-[calc(100vh-64px)] bg-surface-alt py-12 animate-in fade-in relative overflow-hidden">
+            <div className="pointer-events-none absolute -left-20 top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 top-52 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+            <div className="max-w-[1280px] mx-auto px-6 space-y-12 relative z-10">
             {/* Course Header */}
-            <div className="bg-surface rounded-[2.5rem] shadow-sm border border-border p-10 md:p-14 relative overflow-hidden group">
+            <div className="bg-linear-to-br from-primary to-accent text-white rounded-[2.5rem] shadow-lg border border-white/20 p-10 md:p-14 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity duration-700 pointer-events-none -translate-y-10 translate-x-10">
                     <BookOpen size={300} />
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-r from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+                <div className="absolute inset-0 bg-linear-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
                 
                 <div className="relative z-10 w-full max-w-4xl">
-                    <h1 className="text-4xl md:text-5xl lg:text-[3.5rem] font-black text-text mb-6 leading-[1.1] tracking-tight pr-10">{course.title}</h1>
-                    <p className="text-xl text-text-secondary mb-10 font-medium leading-relaxed">
+                    <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white/85 mb-4">Smart LMS Course Space</div>
+                    <h1 className="text-4xl md:text-5xl lg:text-[3.5rem] font-black mb-6 leading-[1.1] tracking-tight pr-10">{course.title}</h1>
+                    <p className="text-xl text-white/85 mb-10 font-medium leading-relaxed">
                         {course.description || 'No description provided for this course.'}
                     </p>
 
-                    <div className="flex flex-wrap gap-4 text-sm font-black uppercase tracking-widest text-text-secondary">
-                        <span className="flex items-center gap-2.5 bg-surface-alt border border-border px-6 py-3.5 rounded-2xl shadow-sm hover:border-accent/30 transition-colors">
-                            <Users size={20} className="text-accent" strokeWidth={2.5}/> Instructor: {course.teacher_name}
+                    <div className="flex flex-wrap gap-4 text-sm font-black uppercase tracking-widest text-white/90">
+                        <span className="flex items-center gap-2.5 bg-white/10 border border-white/25 px-6 py-3.5 rounded-2xl shadow-sm transition-colors">
+                            <Users size={20} className="text-white" strokeWidth={2.5}/> Instructor: {course.teacher_name}
                         </span>
-                        <span className="flex items-center gap-2.5 bg-surface-alt border border-border px-6 py-3.5 rounded-2xl shadow-sm hover:border-success/30 transition-colors">
-                            <Play size={20} className="text-success" strokeWidth={2.5} /> {lectures.length} Lectures
+                        <span className="flex items-center gap-2.5 bg-white/10 border border-white/25 px-6 py-3.5 rounded-2xl shadow-sm transition-colors">
+                            <Play size={20} className="text-white" strokeWidth={2.5} /> {lectures.length} Lectures
                         </span>
-                        <span className="flex items-center gap-2.5 bg-surface-alt border border-border px-6 py-3.5 rounded-2xl shadow-sm hover:border-warning/30 transition-colors">
-                            <Users size={20} className="text-warning" strokeWidth={2.5} /> {course.student_count} Enrolled
+                        <span className="flex items-center gap-2.5 bg-white/10 border border-white/25 px-6 py-3.5 rounded-2xl shadow-sm transition-colors">
+                            <Users size={20} className="text-white" strokeWidth={2.5} /> {course.student_count} Enrolled
                         </span>
                     </div>
                 </div>
@@ -76,7 +81,7 @@ export default function CoursePage() {
                             <p className="text-lg font-medium text-text-secondary">The instructor hasn't published any lectures for this course.</p>
                         </div>
                     ) : (
-                        <div className="bg-surface rounded-[2rem] shadow-sm border border-border overflow-hidden divide-y divide-border">
+                        <div className="glass-premium rounded-[2rem] shadow-sm border border-border overflow-hidden divide-y divide-border">
                             {lectures.map((lecture, i) => (
                                 <div key={lecture.id}
                                     className="flex items-center gap-6 p-6 md:p-8 hover:bg-surface-alt cursor-pointer transition-colors group"
@@ -122,14 +127,14 @@ export default function CoursePage() {
                     </div>
 
                     {materials.length === 0 ? (
-                        <div className="bg-surface-alt rounded-[2rem] border border-border p-10 text-center text-text-muted">
+                        <div className="glass-premium rounded-[2rem] border border-border p-10 text-center text-text-muted">
                             <p className="text-base font-black uppercase tracking-widest">No supplementary materials</p>
                         </div>
                     ) : (
                         <div className="space-y-4">
                             {materials.map(mat => (
                                 <a key={mat.id} href={mat.file_url} target="_blank" rel="noreferrer"
-                                    className="block bg-surface rounded-2xl shadow-sm border border-border p-6 hover:border-accent/40 hover:shadow-md transition-all group">
+                                    className="block glass-premium rounded-2xl shadow-sm border border-border p-6 hover:border-accent/40 hover:shadow-md transition-all group">
                                     <div className="flex items-start gap-4">
                                         <div className="p-3.5 bg-accent-light text-accent rounded-xl group-hover:bg-accent group-hover:text-white transition-colors flex-shrink-0">
                                             <FileText size={24} />
@@ -146,6 +151,7 @@ export default function CoursePage() {
                         </div>
                     )}
                 </div>
+            </div>
             </div>
         </div>
     );

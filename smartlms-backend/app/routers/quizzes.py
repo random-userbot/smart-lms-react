@@ -9,14 +9,19 @@ from sqlalchemy import select, desc
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
+import re
+import json
+from difflib import SequenceMatcher
 from app.database import get_db
 from app.models.models import (
     User, UserRole, Quiz, QuizAttempt, Lecture, Course, Enrollment, Notification, NotificationType
 )
 from app.middleware.auth import get_current_user, require_teacher_or_admin
+from app.config import settings
 from app.services.debug_logger import debug_logger
 from app.services.youtube_service import get_video_transcript
 from app.services.quiz_generator_service import generate_quiz_questions
+from app.services.groq_fallback import AllModelsRateLimitedError, chat_completion_with_fallback
 
 router = APIRouter(prefix="/api/quizzes", tags=["Quizzes"])
 
@@ -71,7 +76,7 @@ class QuizResponse(BaseModel):
 
 class QuizAttemptSubmit(BaseModel):
     quiz_id: str
-    answers: Dict[str, str]  # {question_index: answer}
+    answers: Dict[str, Any]  # {question_index: answer}
     violations: List[Dict[str, Any]] = []
     engagement_data: Optional[Dict] = None
     started_at: str
@@ -105,6 +110,190 @@ class AIQuizRefineRequest(BaseModel):
     lecture_id: str
     current_questions: List[Dict]
     feedback: str
+
+
+def _normalize_text(value: str) -> str:
+    text = (value or "").strip().lower()
+    text = re.sub(r"[^\w\s]", "", text)
+    return re.sub(r"\s+", " ", text)
+
+
+def _text_similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, _normalize_text(a), _normalize_text(b)).ratio()
+
+
+def _split_expected_answers(correct_answer: Any) -> List[str]:
+    if isinstance(correct_answer, list):
+        return [str(x).strip() for x in correct_answer if str(x).strip()]
+
+    if correct_answer is None:
+        return []
+
+    text = str(correct_answer).strip()
+    if not text:
+        return []
+
+    if "|" in text:
+        return [x.strip() for x in text.split("|") if x.strip()]
+
+    if ";" in text:
+        return [x.strip() for x in text.split(";") if x.strip()]
+
+    return [text]
+
+
+def _split_fill_blank_expected(correct_answer: Any, blanks_count: int) -> List[str]:
+    """Split expected answers for fill-in-the-blank with tolerant delimiters."""
+    raw = _split_expected_answers(correct_answer)
+    if not raw:
+        return []
+
+    if len(raw) > 1:
+        return raw
+
+    if blanks_count <= 1:
+        return raw
+
+    single = raw[0]
+    # Many generated quizzes store multi-blank keys in one string.
+    pieces = [p.strip() for p in re.split(r"\s*(?:\||;|,)\s*", single) if p.strip()]
+    if len(pieces) == blanks_count:
+        return pieces
+
+    return raw
+
+
+def _is_free_text_match(student_answer: str, expected_answer: str) -> bool:
+    s = _normalize_text(student_answer)
+    e = _normalize_text(expected_answer)
+
+    if not s or not e:
+        return False
+
+    if s == e:
+        return True
+
+    if len(s) >= 5 and len(e) >= 5 and (s in e or e in s):
+        return True
+
+    if _text_similarity(s, e) >= 0.82:
+        return True
+
+    s_tokens = set(s.split())
+    e_tokens = set(e.split())
+    if e_tokens:
+        overlap = len(s_tokens & e_tokens) / len(e_tokens)
+        if overlap >= 0.65:
+            return True
+
+    return False
+
+
+def _is_answer_correct(question: Dict[str, Any], student_answer: Any, correct_answer: Any) -> bool:
+    q_type = (question.get("type") or "").lower()
+
+    # Handle MCQ / True-False with strict normalized equality.
+    if q_type in {"mcq", "true_false"}:
+        return _normalize_text(str(student_answer or "")) == _normalize_text(str(correct_answer or ""))
+
+    expected_candidates = _split_expected_answers(correct_answer)
+    if not expected_candidates:
+        return False
+
+    # Fill-in-the-blank can arrive as a list from the frontend.
+    if isinstance(student_answer, list):
+        student_parts = [str(x).strip() for x in student_answer if str(x).strip()]
+        blanks_count = str(question.get("question") or "").count("___")
+        expected_parts = _split_fill_blank_expected(correct_answer, blanks_count or len(student_parts))
+
+        # If teacher stored a single expected answer but student sent multiple blanks,
+        # compare concatenated form as a fallback.
+        if len(expected_parts) == 1 and len(student_parts) > 1:
+            return _is_free_text_match(" ".join(student_parts), expected_parts[0])
+
+        if len(student_parts) != len(expected_parts):
+            return False
+
+        return all(_is_free_text_match(student_parts[i], expected_parts[i]) for i in range(len(student_parts)))
+
+    # Short/descriptive answers: accept close matches, alternatives (A|B), and token overlap.
+    student_text = str(student_answer or "")
+    return any(_is_free_text_match(student_text, candidate) for candidate in expected_candidates)
+
+
+async def _ai_semantic_grade(
+    question: Dict[str, Any],
+    student_answer: Any,
+    correct_answer: Any,
+) -> Optional[bool]:
+    """Use LLM semantic comparison for non-objective answers.
+
+    Returns:
+        True/False when model gives a valid judgment, None when unavailable.
+    """
+    if not settings.GROQ_API_KEY:
+        return None
+
+    try:
+        from groq import AsyncGroq
+
+        client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+
+        payload = {
+            "question_type": question.get("type", ""),
+            "question": question.get("question", ""),
+            "expected_answer": correct_answer,
+            "student_answer": student_answer,
+            "grading_rules": [
+                "Judge semantic equivalence, not exact wording.",
+                "Allow spelling/grammar mistakes if meaning is correct.",
+                "For fill-in-the-blank lists, evaluate each blank against the intended concept.",
+                "Be strict against contradictory facts.",
+            ],
+            "response_format": {
+                "is_correct": "boolean",
+                "confidence": "0_to_1_float",
+            },
+        }
+
+        model_chain = settings.groq_chat_models_for_task(
+            task="semantic_grading",
+            primary_model="llama-3.3-70b-versatile",
+        )
+
+        response, _ = await chat_completion_with_fallback(
+            client,
+            primary_model=model_chain[0],
+            fallback_models=model_chain[1:],
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a strict but fair quiz grader. Return ONLY valid JSON.",
+                },
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
+            ],
+            temperature=0.0,
+            max_tokens=120,
+            stream=False,
+            retries_per_model=settings.GROQ_MODEL_RETRIES_PER_MODEL,
+            retry_base_seconds=settings.GROQ_MODEL_RETRY_BASE_SECONDS,
+            retry_max_seconds=settings.GROQ_MODEL_RETRY_MAX_SECONDS,
+        )
+
+        content = (response.choices[0].message.content or "").strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?", "", content).strip()
+            content = re.sub(r"```$", "", content).strip()
+
+        parsed = json.loads(content)
+        judged = parsed.get("is_correct")
+        confidence = float(parsed.get("confidence", 0) or 0)
+        if isinstance(judged, bool) and confidence >= 0.55:
+            return judged
+    except Exception as e:
+        debug_logger.log("error", f"AI quiz grading fallback failed: {str(e)}")
+
+    return None
 
 
 # ─── Routes ──────────────────────────────────────────────
@@ -307,8 +496,17 @@ async def submit_quiz_attempt(
         correct = question.get("correct_answer", "")
         correct_answers[idx] = correct
 
-        student_answer = request.answers.get(idx, "").strip().lower()
-        if student_answer == correct.strip().lower():
+        student_answer = request.answers.get(idx, "")
+        q_type = (question.get("type") or "").lower()
+        is_correct = _is_answer_correct(question, student_answer, correct)
+
+        # Semantic AI fallback for free-text style questions.
+        if not is_correct and q_type not in {"mcq", "true_false"}:
+            ai_decision = await _ai_semantic_grade(question, student_answer, correct)
+            if ai_decision is True:
+                is_correct = True
+
+        if is_correct:
             score += question.get("points", 1)
 
     # Calculate integrity score (penalize violations)
@@ -423,6 +621,9 @@ async def generate_ai_quiz(
             include_icap=request.include_icap,
         )
         return {"questions": questions, "count": len(questions)}
+    except AllModelsRateLimitedError as e:
+        debug_logger.log("warning", f"AI quiz generation rate-limited: {str(e)}")
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         debug_logger.log("error", f"AI quiz generation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
@@ -459,6 +660,9 @@ async def refine_ai_quiz(
             feedback=request.feedback,
         )
         return {"questions": questions, "count": len(questions)}
+    except AllModelsRateLimitedError as e:
+        debug_logger.log("warning", f"AI quiz refinement rate-limited: {str(e)}")
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         debug_logger.log("error", f"AI quiz refinement failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Quiz refinement failed: {str(e)}")

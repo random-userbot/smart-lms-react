@@ -29,20 +29,33 @@ async def list_teachers(
         select(User).where(User.role == UserRole.TEACHER)
     )
     teachers = result.scalars().all()
+    teacher_ids = [teacher.id for teacher in teachers]
+
+    latest_scores_by_teacher = {}
+    course_counts_by_teacher = {}
+
+    if teacher_ids:
+        scores_result = await db.execute(
+            select(TeachingScore)
+            .where(TeachingScore.teacher_id.in_(teacher_ids))
+            .order_by(TeachingScore.teacher_id, TeachingScore.calculated_at.desc())
+        )
+        for score in scores_result.scalars().all():
+            if score.teacher_id not in latest_scores_by_teacher:
+                latest_scores_by_teacher[score.teacher_id] = score
+
+        course_count_result = await db.execute(
+            select(Course.teacher_id, func.count(Course.id))
+            .where(Course.teacher_id.in_(teacher_ids))
+            .group_by(Course.teacher_id)
+        )
+        course_counts_by_teacher = {
+            teacher_id: count for teacher_id, count in course_count_result.all()
+        }
 
     response = []
     for teacher in teachers:
-        # Get latest scores
-        score_result = await db.execute(
-            select(TeachingScore).where(TeachingScore.teacher_id == teacher.id)
-            .order_by(TeachingScore.calculated_at.desc()).limit(1)
-        )
-        latest_score = score_result.scalar_one_or_none()
-
-        # Count courses
-        course_count = await db.execute(
-            select(func.count()).select_from(Course).where(Course.teacher_id == teacher.id)
-        )
+        latest_score = latest_scores_by_teacher.get(teacher.id)
 
         response.append({
             "id": teacher.id,
@@ -51,7 +64,7 @@ async def list_teachers(
             "email": teacher.email,
             "is_active": teacher.is_active,
             "last_login": teacher.last_login.isoformat() if teacher.last_login else None,
-            "course_count": course_count.scalar() or 0,
+            "course_count": int(course_counts_by_teacher.get(teacher.id, 0) or 0),
             "overall_teaching_score": latest_score.overall_score if latest_score else None,
             "score_breakdown": latest_score.shap_breakdown if latest_score else None,
         })
@@ -76,23 +89,38 @@ async def get_teacher_detail(
         select(Course).where(Course.teacher_id == teacher_id)
     )
     courses = courses_result.scalars().all()
+    course_ids = [course.id for course in courses]
+
+    latest_scores_by_course = {}
+    student_counts_by_course = {}
+
+    if course_ids:
+        scores_result = await db.execute(
+            select(TeachingScore)
+            .where(TeachingScore.course_id.in_(course_ids))
+            .order_by(TeachingScore.course_id, TeachingScore.calculated_at.desc())
+        )
+        for score in scores_result.scalars().all():
+            if score.course_id not in latest_scores_by_course:
+                latest_scores_by_course[score.course_id] = score
+
+        student_count_result = await db.execute(
+            select(Enrollment.course_id, func.count(Enrollment.id))
+            .where(Enrollment.course_id.in_(course_ids))
+            .group_by(Enrollment.course_id)
+        )
+        student_counts_by_course = {
+            cid: count for cid, count in student_count_result.all()
+        }
 
     course_data = []
     for course in courses:
-        score_result = await db.execute(
-            select(TeachingScore).where(TeachingScore.course_id == course.id)
-            .order_by(TeachingScore.calculated_at.desc()).limit(1)
-        )
-        score = score_result.scalar_one_or_none()
-
-        student_count = await db.execute(
-            select(func.count()).select_from(Enrollment).where(Enrollment.course_id == course.id)
-        )
+        score = latest_scores_by_course.get(course.id)
 
         course_data.append({
             "id": course.id,
             "title": course.title,
-            "student_count": student_count.scalar() or 0,
+            "student_count": int(student_counts_by_course.get(course.id, 0) or 0),
             "teaching_score": score.overall_score if score else None,
             "score_breakdown": score.shap_breakdown if score else None,
             "recommendations": score.recommendations if score else [],

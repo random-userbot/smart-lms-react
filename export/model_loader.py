@@ -6,6 +6,7 @@ Provides all custom layers used in the trained models
 
 import numpy as np
 import tensorflow as tf
+import inspect
 from tensorflow import keras
 from tensorflow.keras import layers
 
@@ -172,27 +173,39 @@ def load_model_with_custom_layers(model_path, compile=False):
         'TransformerBlock': TransformerBlock,
     }
     
+    def _load_with_kwargs(extra_kwargs=None):
+        kwargs = {
+            'custom_objects': custom_objects,
+            'compile': compile,
+        }
+        if extra_kwargs:
+            kwargs.update(extra_kwargs)
+        return keras.models.load_model(model_path, **kwargs)
+
+    supports_safe_mode = False
     try:
-        # Try loading with custom objects
-        model = keras.models.load_model(
-            model_path,
-            custom_objects=custom_objects,
-            compile=compile
-        )
-        return model
+        supports_safe_mode = 'safe_mode' in inspect.signature(keras.models.load_model).parameters
+    except Exception:
+        supports_safe_mode = False
+
+    try:
+        # First attempt: default safe loading.
+        return _load_with_kwargs()
     except Exception as e:
-        # If it fails with Lambda layer, try unsafe deserialization
-        if "Lambda" in str(e):
-            print(f"Warning: Model contains Lambda layers. Enabling unsafe deserialization...")
+        msg = str(e)
+        is_lambda_issue = 'Lambda' in msg or 'safe_mode=False' in msg or 'unsafe_deserialization' in msg
+        if not is_lambda_issue:
+            raise
+
+        print('Warning: Lambda layer deserialization blocked in safe mode. Retrying with unsafe deserialization enabled...')
+        try:
             keras.config.enable_unsafe_deserialization()
-            model = keras.models.load_model(
-                model_path,
-                custom_objects=custom_objects,
-                compile=compile
-            )
-            return model
-        else:
-            raise e
+        except Exception:
+            pass
+
+        if supports_safe_mode:
+            return _load_with_kwargs({'safe_mode': False})
+        return _load_with_kwargs()
 
 
 # ============================================================================
