@@ -4,7 +4,7 @@ import { useActivity } from '../../context/ActivityTracker';
 import { 
     Bot, Send, User, Loader2, Trash2, ChevronDown, 
     MessageSquare, Plus, Search, Menu, X, MoreVertical,
-    PanelLeftClose, PanelLeftOpen, Mic
+    PanelLeftClose, PanelLeftOpen, Mic, Copy, RotateCcw
 } from 'lucide-react';
 
 const SUGGESTED_PROMPTS = {
@@ -32,6 +32,12 @@ const MODEL_INFO = {
     language_practice: { name: 'Mixtral 8x7B', icon: '🗣️', desc: 'Fast multilingual responses' },
     grammar_check: { name: 'Gemma 2 9B', icon: '✍️', desc: 'Precise language analysis' },
 };
+
+const MODE_CHOICES = [
+    { key: 'general', label: 'General', emoji: '🧠' },
+    { key: 'language_practice', label: 'Language', emoji: '🗣️' },
+    { key: 'grammar_check', label: 'Grammar', emoji: '✍️' },
+];
 
 export default function AITutor() {
     const { trackEvent } = useActivity();
@@ -176,6 +182,21 @@ export default function AITutor() {
         }
     };
 
+    const handleCopy = async (content) => {
+        try {
+            await navigator.clipboard.writeText(content || '');
+        } catch (err) {
+            console.warn('Clipboard copy failed', err);
+        }
+    };
+
+    const handleRegenerate = () => {
+        if (isTyping) return;
+        const latestUser = [...messages].reverse().find((m) => m.role === 'user');
+        if (!latestUser?.content) return;
+        handleSend(latestUser.content);
+    };
+
     const formatTime = (ts) => {
         const date = new Date(ts);
         return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
@@ -312,6 +333,34 @@ export default function AITutor() {
                     </div>
                 )}
 
+                <div className="px-4 md:px-6 py-3 border-b border-border bg-surface">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {MODE_CHOICES.map((m) => {
+                            const isActive = mode === m.key;
+                            const isLocked = Boolean(activeSessionId);
+                            return (
+                                <button
+                                    key={m.key}
+                                    onClick={() => {
+                                        if (isLocked) return;
+                                        setMode(m.key);
+                                        trackEvent('tutor_mode_changed', { mode: m.key });
+                                    }}
+                                    className={`px-3.5 py-2 rounded-xl border text-xs font-black uppercase tracking-widest transition-colors ${isActive ? 'bg-accent-light text-accent border-accent/30' : 'bg-surface-alt text-text-muted border-border hover:text-text'} ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    title={isLocked ? 'Start a new chat to change mode' : MODEL_INFO[m.key]?.desc}
+                                >
+                                    <span className="mr-1">{m.emoji}</span>{m.label}
+                                </button>
+                            );
+                        })}
+                        {activeSessionId && (
+                            <span className="ml-1 text-[10px] font-black uppercase tracking-widest text-text-muted">
+                                Mode locked for this chat. Start a new chat to switch.
+                            </span>
+                        )}
+                    </div>
+                </div>
+
                 {/* Chat Feed */}
                 <div className="flex-1 overflow-y-auto w-full scroll-smooth">
                     {messages.length === 1 && !isTyping && !activeSessionId && (
@@ -356,6 +405,24 @@ export default function AITutor() {
                                                 msg.content
                                             )}
                                         </div>
+                                        {msg.role === 'assistant' && msg.content && (
+                                            <div className="mt-3 flex items-center gap-2">
+                                                <button
+                                                    onClick={() => handleCopy(msg.content)}
+                                                    className="px-2.5 py-1.5 rounded-lg border border-border text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text hover:bg-surface-elevated transition-colors"
+                                                >
+                                                    <span className="inline-flex items-center gap-1"><Copy size={12} /> Copy</span>
+                                                </button>
+                                                {i === messages.length - 1 && (
+                                                    <button
+                                                        onClick={handleRegenerate}
+                                                        className="px-2.5 py-1.5 rounded-lg border border-border text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text hover:bg-surface-elevated transition-colors"
+                                                    >
+                                                        <span className="inline-flex items-center gap-1"><RotateCcw size={12} /> Regenerate</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -386,26 +453,10 @@ export default function AITutor() {
                 {/* Input Area (Sticky at bottom, centered, floating) */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-surface-alt via-surface-alt/95 to-transparent pt-16 pb-6 px-4 md:px-8 z-10 pointer-events-none">
                     <div className="max-w-3xl mx-auto relative pointer-events-auto flex flex-col gap-2">
-                        {!activeSessionId && (
-                            <div className="flex items-center gap-2 px-2 self-start pointer-events-auto">
-                                <select
-                                    className="input !py-1.5 !pl-3 !pr-8 text-xs font-bold bg-surface border border-border focus:border-accent cursor-pointer hover:bg-surface-elevated transition-colors appearance-none rounded-xl"
-                                    value={mode}
-                                    onChange={e => {
-                                        setMode(e.target.value);
-                                        trackEvent('tutor_mode_changed', { mode: e.target.value });
-                                    }}
-                                >
-                                    <option value="general">🧠 General Tutoring</option>
-                                    <option value="language_practice">🗣️ Language Practice</option>
-                                    <option value="grammar_check">✍️ Grammar Check</option>
-                                </select>
-                            </div>
-                        )}
                         <div className="relative bg-surface rounded-[24px] border border-border shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:ring-2 focus-within:ring-accent/20 focus-within:border-accent transition-all overflow-hidden flex flex-col pointer-events-auto">
                             <textarea
                                 className="w-full bg-transparent text-text placeholder-text-muted px-6 pt-5 pb-3 resize-none max-h-[250px] min-h-[64px] text-[15px] focus:outline-none leading-relaxed"
-                                placeholder={`Message AI Tutor...`}
+                                placeholder={`Message AI Tutor (${MODEL_INFO[mode]?.name || 'Auto'})...`}
                                 value={input}
                                 onChange={e => setInput(e.target.value)}
                                 onKeyDown={e => {

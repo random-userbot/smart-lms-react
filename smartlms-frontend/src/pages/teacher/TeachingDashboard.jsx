@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { coursesAPI, analyticsAPI, lecturesAPI, messagesAPI, engagementAPI, feedbackAPI } from '../../api/client';
-import { TrendingUp, BarChart3, Activity, Users, BookOpen, Target, Download, ArrowLeft, Play, Clock, Sparkles, Brain, MessageSquare, Send, AlertTriangle, Award, MessageCircle } from 'lucide-react';
+import { TrendingUp, BarChart3, Activity, Users, BookOpen, Target, Download, ArrowLeft, Play, Clock, Sparkles, Brain, MessageSquare, Send, AlertTriangle, Award, MessageCircle, FlaskConical, RefreshCcw } from 'lucide-react';
 
 function EngagementHeatmap({ timeline }) {
     if (!timeline || timeline.length === 0) return <div className="text-text-muted text-sm font-bold py-3">No timeline data available.</div>;
@@ -230,6 +230,27 @@ export default function TeachingDashboard() {
         setMessageSubject(template.subject);
         setMessageContent(template.content);
         setMessageCategory(template.category);
+    };
+
+    const openLiveTestLab = () => {
+        window.open('/teaching-dashboard/live-test', '_blank', 'noopener,noreferrer');
+    };
+
+    const refreshCourseAnalytics = async () => {
+        if (!selectedCourse || loading) return;
+        setLoading(true);
+        try {
+            const [scoreRes, dashRes, lecRes] = await Promise.all([
+                analyticsAPI.getTeachingScore(selectedCourse).catch(() => ({ data: null })),
+                analyticsAPI.getCourseDashboard(selectedCourse).catch(() => ({ data: null })),
+                lecturesAPI.getByCourse(selectedCourse).catch(() => ({ data: [] }))
+            ]);
+            setScore(scoreRes.data);
+            setDashboard(dashRes.data);
+            setLectures(lecRes.data || []);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const renderCourseView = () => {
@@ -950,19 +971,45 @@ export default function TeachingDashboard() {
                     <p className="text-lg text-text-secondary font-medium mt-3 ml-6 flex items-center gap-3"><TrendingUp size={20} className="text-accent" /> Monitor live student engagement & class performance</p>
                 </div>
                 {viewLevel === 'course' && (
-                    <div className="relative">
-                        <select
-                            className="input md:w-80 !py-4 pr-12 text-base font-black cursor-pointer shadow-sm"
-                            value={selectedCourse || ''}
-                            onChange={e => setSelectedCourse(e.target.value)}
-                        >
-                            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-accent">
-                            <BookOpen size={24} />
+                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                        <div className="relative min-w-[320px]">
+                            <select
+                                className="input w-full py-4! pr-12 text-base font-black cursor-pointer shadow-sm"
+                                value={selectedCourse || ''}
+                                onChange={e => setSelectedCourse(e.target.value)}
+                            >
+                                {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-accent">
+                                <BookOpen size={24} />
+                            </div>
                         </div>
+                        <button onClick={refreshCourseAnalytics} className="btn btn-secondary border-2 px-5 shadow-sm inline-flex items-center gap-2">
+                            <RefreshCcw size={16} /> Refresh
+                        </button>
+                        <button onClick={openLiveTestLab} className="btn btn-primary px-5 shadow-sm inline-flex items-center gap-2">
+                            <FlaskConical size={16} /> Live Test Lab
+                        </button>
                     </div>
                 )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+                <div className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+                    <div className="text-[11px] uppercase tracking-widest font-black text-text-muted">Teaching Score</div>
+                    <div className="text-3xl font-black text-text mt-1">{(score?.overall_score || 0).toFixed(1)}%</div>
+                    <div className="text-xs font-semibold text-text-secondary mt-1">Composite of engagement, quizzes, ICAP, and activity</div>
+                </div>
+                <div className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+                    <div className="text-[11px] uppercase tracking-widest font-black text-text-muted">Enrolled Students</div>
+                    <div className="text-3xl font-black text-text mt-1">{dashboard?.student_stats?.length || 0}</div>
+                    <div className="text-xs font-semibold text-text-secondary mt-1">Learners with activity in this course window</div>
+                </div>
+                <div className="bg-surface rounded-2xl border border-border shadow-sm p-5">
+                    <div className="text-[11px] uppercase tracking-widest font-black text-text-muted">Published Lectures</div>
+                    <div className="text-3xl font-black text-text mt-1">{lectures?.length || 0}</div>
+                    <div className="text-xs font-semibold text-text-secondary mt-1">Use lecture drill-down for timeline and sentiment analysis</div>
+                </div>
             </div>
 
             {viewLevel === 'course' && renderCourseView()}

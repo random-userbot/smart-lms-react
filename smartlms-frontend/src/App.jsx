@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ActivityProvider } from './context/ActivityTracker';
@@ -69,6 +70,19 @@ function PageTransitionWrapper({ children }) {
     >
       {children}
     </motion.div>
+  );
+}
+
+function LiveTestRedirect() {
+  useEffect(() => {
+    const qs = window.location.search || '';
+    window.location.assign(`/engagement-live-test.html${qs}`);
+  }, []);
+
+  return (
+    <div className="min-h-[50vh] flex items-center justify-center">
+      <div className="text-text-secondary font-bold">Opening Live Engagement Test...</div>
+    </div>
   );
 }
 
@@ -164,6 +178,11 @@ function AppRoutes() {
         <Route path="/teaching-dashboard" element={
           <ProtectedRoute roles={['teacher']}>
             <AppLayout><PageTransitionWrapper><TeachingDashboard /></PageTransitionWrapper></AppLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/teaching-dashboard/live-test" element={
+          <ProtectedRoute roles={['teacher', 'admin']}>
+            <AppLayout><PageTransitionWrapper><LiveTestRedirect /></PageTransitionWrapper></AppLayout>
           </ProtectedRoute>
         } />
 

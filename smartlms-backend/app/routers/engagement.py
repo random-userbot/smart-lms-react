@@ -854,7 +854,7 @@ async def get_live_watchers(
 
 
 @router.get("/model-info")
-async def get_model_info(current_user: User = Depends(get_current_user_optional)):
+async def get_model_info():
     """Get information about the current engagement model."""
     model = get_engagement_model()
 
@@ -893,7 +893,7 @@ async def get_model_info(current_user: User = Depends(get_current_user_optional)
 
 
 @router.get("/models")
-async def list_runtime_models(current_user: User = Depends(get_current_user_optional)):
+async def list_runtime_models():
     """List all runtime-selectable models, including exported models."""
     registry = get_export_model_registry()
     models = registry.list_models()
@@ -908,7 +908,6 @@ async def list_runtime_models(current_user: User = Depends(get_current_user_opti
 @router.post("/models/infer")
 async def infer_with_selected_model(
     request: ModelInferenceRequest,
-    current_user: User = Depends(get_current_user_optional),
 ):
     """Run inference with a user-selected model on real captured feature batches."""
     registry = get_export_model_registry()

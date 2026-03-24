@@ -4,7 +4,7 @@ import ReactPlayer from 'react-player';
 import { lecturesAPI, engagementAPI, quizzesAPI, feedbackAPI, gamificationAPI } from '../../api/client';
 import {
     Pause, Brain, Sparkles, BarChart3, Info, Play, FileText,
-    Clock, CheckCircle, ArrowRight, Activity
+    Clock, CheckCircle, ArrowRight, Activity, AlertTriangle
 } from 'lucide-react';
 import { useActivity } from '../../context/ActivityTracker';
 import { SHAPWaterfall, TopFactors, FuzzyRulesList, EngagementGauge } from '../../components/engagement/SHAPVisualization';
@@ -168,8 +168,10 @@ export default function LecturePage() {
             });
     }, []);
 
-    const selectedQuizId = new URLSearchParams(location.search).get('quizId');
-    const requestedPhase = new URLSearchParams(location.search).get('phase');
+    const queryParams = new URLSearchParams(location.search);
+    const selectedQuizId = queryParams.get('quizId') || queryParams.get('quizid');
+    const requestedPhase = queryParams.get('phase');
+    const gateMode = queryParams.get('gate');
 
     useEffect(() => {
         if (requestedPhase === 'quiz' && quizzes.length > 0) {
@@ -353,6 +355,15 @@ export default function LecturePage() {
                     </div>
 
                     <div className="bg-surface rounded-3xl shadow-lg border border-border overflow-hidden ring-1 ring-border/50 w-full mb-10">
+                        {gateMode === 'watch-required' && requestedPhase !== 'quiz' && (
+                            <div className="px-8 py-4 bg-warning-light border-b border-warning/25 flex items-start gap-3">
+                                <AlertTriangle className="text-warning shrink-0 mt-0.5" size={18} />
+                                <div>
+                                    <p className="text-sm font-black text-warning-dark">Watch this lecture first to unlock the quiz.</p>
+                                    <p className="text-xs font-semibold text-warning-dark/80 mt-1">After your first watch session, you can reattempt directly from My Quizzes.</p>
+                                </div>
+                            </div>
+                        )}
                         {activeTab === 'video' ? (
                             <div className="w-full">
                                 {videoUrl ? (

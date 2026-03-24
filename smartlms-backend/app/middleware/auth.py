@@ -6,13 +6,16 @@ JWT verification dependency for FastAPI routes
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from app.database import get_db
 from app.services.auth_service import decode_token, get_user_by_id
 from app.models.models import User, UserRole
 from typing import Optional
+import logging
 
 
 security = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 async def get_current_user(
@@ -44,7 +47,14 @@ async def get_current_user(
             detail="Invalid token payload",
         )
 
-    user = await get_user_by_id(db, user_id)
+    try:
+        user = await get_user_by_id(db, user_id)
+    except SQLAlchemyError as exc:
+        logger.warning("Auth DB lookup failed in get_current_user: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable. Please retry.",
+        )
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,7 +88,12 @@ async def get_current_user_optional(
     if user_id is None:
         return None
 
-    user = await get_user_by_id(db, user_id)
+    try:
+        user = await get_user_by_id(db, user_id)
+    except SQLAlchemyError as exc:
+        # Optional auth should never crash public/read-mostly endpoints.
+        logger.warning("Auth DB lookup failed in get_current_user_optional: %s", exc)
+        return None
     if user is None:
         return None
 

@@ -5,7 +5,7 @@ Quiz CRUD, AI generation, attempts, anti-cheating, grading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -14,7 +14,7 @@ import json
 from difflib import SequenceMatcher
 from app.database import get_db
 from app.models.models import (
-    User, UserRole, Quiz, QuizAttempt, Lecture, Course, Enrollment, Notification, NotificationType
+    User, UserRole, Quiz, QuizAttempt, Lecture, Course, Enrollment, Notification, NotificationType, EngagementLog
 )
 from app.middleware.auth import get_current_user, require_teacher_or_admin
 from app.config import settings
@@ -357,6 +357,7 @@ async def get_my_quizzes(
 
     quiz_ids = [q.id for q, _, _ in rows]
     attempts_by_quiz: Dict[str, List[QuizAttempt]] = {}
+    lecture_watch_by_id: Dict[str, int] = {}
 
     if current_user.role == UserRole.STUDENT:
         attempts = (
@@ -368,6 +369,23 @@ async def get_my_quizzes(
         ).scalars().all()
         for a in attempts:
             attempts_by_quiz.setdefault(a.quiz_id, []).append(a)
+
+        lecture_ids = list({q.lecture_id for q, _, _ in rows if q.lecture_id})
+        if lecture_ids:
+            watch_rows = (
+                await db.execute(
+                    select(
+                        EngagementLog.lecture_id,
+                        func.coalesce(func.sum(EngagementLog.watch_duration), 0),
+                    )
+                    .where(
+                        EngagementLog.student_id == current_user.id,
+                        EngagementLog.lecture_id.in_(lecture_ids),
+                    )
+                    .group_by(EngagementLog.lecture_id)
+                )
+            ).all()
+            lecture_watch_by_id = {lecture_id: int(total_watch or 0) for lecture_id, total_watch in watch_rows}
 
     response = []
     for quiz, lecture_title, course_title in rows:
@@ -396,6 +414,8 @@ async def get_my_quizzes(
                 "attempt_count": len(attempts),
                 "latest_percentage": latest_percentage,
                 "best_percentage": best_percentage,
+                "lecture_watch_seconds": lecture_watch_by_id.get(quiz.lecture_id, 0) if current_user.role == UserRole.STUDENT else None,
+                "lecture_watched": bool(lecture_watch_by_id.get(quiz.lecture_id, 0) > 0) if current_user.role == UserRole.STUDENT else None,
             }
         )
 

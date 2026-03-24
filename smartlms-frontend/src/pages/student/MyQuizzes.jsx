@@ -40,7 +40,12 @@ export default function MyQuizzes() {
     }, [quizzes, query]);
 
     const openQuiz = (quiz) => {
-        navigate(`/lectures/${quiz.lecture_id}?phase=quiz&quizId=${quiz.id}`);
+        const watched = Boolean(quiz?.lecture_watched);
+        if (watched) {
+            navigate(`/lectures/${quiz.lecture_id}?phase=quiz&quizId=${quiz.id}`);
+            return;
+        }
+        navigate(`/lectures/${quiz.lecture_id}?phase=lecture&quizId=${quiz.id}&gate=watch-required`);
     };
 
     if (loading) {
@@ -101,6 +106,15 @@ export default function MyQuizzes() {
                                 <Stat icon={<Layers size={16} />} label="Attempts" value={String(quiz.attempt_count || 0)} />
                                 <Stat icon={<Trophy size={16} />} label="Best" value={quiz.best_percentage != null ? `${quiz.best_percentage}%` : '-'} />
                                 <Stat icon={<Clock3 size={16} />} label="Latest" value={quiz.latest_percentage != null ? `${quiz.latest_percentage}%` : '-'} />
+                            </div>
+
+                            <div className="mt-4 flex items-center justify-between gap-3">
+                                <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${quiz?.lecture_watched ? 'bg-success-light text-success border-success/25' : 'bg-warning-light text-warning border-warning/30'}`}>
+                                    {quiz?.lecture_watched ? 'Ready to Reattempt' : 'Watch Lecture First'}
+                                </span>
+                                <span className="text-xs font-bold text-text-muted">
+                                    Watched: {Math.floor(Number(quiz?.lecture_watch_seconds || 0) / 60)}m
+                                </span>
                             </div>
 
                             <button

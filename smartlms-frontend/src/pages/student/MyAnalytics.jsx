@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { analyticsAPI, gamificationAPI, engagementAPI, coursesAPI } from '../../api/client';
-import { BarChart3, Activity, Brain, Award, Sparkles, Bot, Download, Info, TrendingUp, Zap, Target, BookOpen, PlayCircle } from 'lucide-react';
+import { BarChart3, Activity, Brain, Award, Sparkles, Bot, Download, Info, TrendingUp, Zap, Target, BookOpen, PlayCircle, ArrowUpRight, CalendarRange } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar } from 'recharts';
 import { SHAPWaterfall, TopFactors, EngagementGauge } from '../../components/engagement/SHAPVisualization';
 import { ICAPBadge, ICAPProgressBar } from '../../components/engagement/EngagementHeatmap';
@@ -71,14 +71,50 @@ export default function MyAnalytics() {
         return 0;
     };
 
+    const recentTrendWindow = chartRows.slice(-7);
+    const trendDelta = recentTrendWindow.length >= 2
+        ? recentTrendWindow[recentTrendWindow.length - 1].engagement - recentTrendWindow[0].engagement
+        : 0;
+    const trendLabel = trendDelta > 4 ? 'Rising' : trendDelta < -4 ? 'Falling' : 'Stable';
+    const trendTone = trendDelta > 4 ? 'text-success' : trendDelta < -4 ? 'text-danger' : 'text-warning';
+
     if (loading) return <AnalyticsPageSkeleton />;
 
     return (
         <div className="min-h-[calc(100vh-64px)] bg-surface-alt max-w-7xl mx-auto px-6 py-10 space-y-10">
             {/* Header */}
-            <div>
-                <h1 className="text-4xl md:text-5xl font-black text-text leading-tight">My Analytics</h1>
-                <p className="text-lg text-text-secondary font-medium mt-2">Track your learning progress, engagement, and achievements.</p>
+            <div className="bg-surface rounded-3xl border border-border shadow-sm p-8 md:p-10">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                    <div>
+                        <h1 className="text-4xl md:text-5xl font-black text-text leading-tight">My Analytics</h1>
+                        <p className="text-lg text-text-secondary font-medium mt-2">Track your learning progress, engagement quality, and weekly momentum.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                        <button onClick={() => navigate('/ai-tutor')} className="btn btn-primary px-5 py-3 shadow-sm">
+                            <span className="inline-flex items-center gap-2"><Bot size={16} /> Ask AI Tutor <ArrowUpRight size={14} /></span>
+                        </button>
+                        <button onClick={() => navigate('/my-courses')} className="btn btn-secondary px-5 py-3 border-2 shadow-sm">
+                            <span className="inline-flex items-center gap-2"><BookOpen size={16} /> Continue Courses</span>
+                        </button>
+                    </div>
+                </div>
+                <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-surface-alt rounded-2xl border border-border p-4">
+                        <div className="text-[11px] uppercase tracking-widest font-black text-text-muted mb-1">7-Day Focus Trend</div>
+                        <div className={`text-2xl font-black ${trendTone}`}>{trendLabel}</div>
+                        <div className="text-xs font-semibold text-text-secondary mt-1">{trendDelta >= 0 ? '+' : ''}{trendDelta.toFixed(1)} pts vs week start</div>
+                    </div>
+                    <div className="bg-surface-alt rounded-2xl border border-border p-4">
+                        <div className="text-[11px] uppercase tracking-widest font-black text-text-muted mb-1">Data Window</div>
+                        <div className="text-2xl font-black text-text inline-flex items-center gap-2"><CalendarRange size={18} /> 180 Days</div>
+                        <div className="text-xs font-semibold text-text-secondary mt-1">Recent engagement, quiz, and activity events</div>
+                    </div>
+                    <div className="bg-surface-alt rounded-2xl border border-border p-4">
+                        <div className="text-[11px] uppercase tracking-widest font-black text-text-muted mb-1">Current ICAP State</div>
+                        <div className="mt-1"><ICAPBadge level={data?.engagement?.last_icap || 'passive'} size="md" /></div>
+                        <div className="text-xs font-semibold text-text-secondary mt-2">Latest behavior cluster from your sessions</div>
+                    </div>
+                </div>
             </div>
 
             {/* Hero Dashboard: Engagement Index + Stats Grid */}

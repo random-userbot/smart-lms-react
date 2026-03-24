@@ -37,6 +37,16 @@ services:
         sync: false
       - key: DATABASE_URL_SYNC
         sync: false
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: DB_POOL_RECYCLE_SECONDS
+        value: "1800"
+      - key: DB_CONNECT_TIMEOUT_SECONDS
+        value: "10"
+      - key: DB_COMMAND_TIMEOUT_SECONDS
+        value: "30"
       - key: JWT_SECRET_KEY
         sync: false
       - key: GROQ_API_KEY

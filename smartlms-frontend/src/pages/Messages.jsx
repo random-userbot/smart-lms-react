@@ -26,6 +26,7 @@ export default function Messages() {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [conversationFilter, setConversationFilter] = useState('all');
     const [showNewMessageModal, setShowNewMessageModal] = useState(false);
     const [availableStudents, setAvailableStudents] = useState([]);
     const [studentSearchQuery, setStudentSearchQuery] = useState('');
@@ -155,9 +156,12 @@ export default function Messages() {
         }
     };
 
-    const filteredConversations = conversations.filter(c =>
-        c.other_user_name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const unreadCount = conversations.reduce((acc, c) => acc + Number(c.unread_count || 0), 0);
+    const filteredConversations = conversations.filter(c => {
+        const matchesSearch = c.other_user_name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesFilter = conversationFilter === 'all' || Number(c.unread_count || 0) > 0;
+        return matchesSearch && matchesFilter;
+    });
 
     if (loading) return (
         <div className="min-h-[50vh] flex items-center justify-center">
@@ -173,6 +177,10 @@ export default function Messages() {
                     <MessageSquare size={40} /> Messages
                 </h1>
                 <p className="text-white/85 mt-2 text-base font-medium">Stay connected with your students, teachers, and peers.</p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                    <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-white/15 border border-white/25">Conversations: {conversations.length}</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-white/15 border border-white/25">Unread: {unreadCount}</span>
+                </div>
             </div>
 
             <div className="glass-premium rounded-3xl shadow-sm border border-border/60 overflow-hidden h-[calc(100vh-260px)] min-h-[560px] flex">
@@ -196,6 +204,20 @@ export default function Messages() {
                                 title="Start new conversation"
                             >
                                 <Plus size={20} />
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setConversationFilter('all')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest border transition-colors ${conversationFilter === 'all' ? 'bg-accent-light text-accent border-accent/25' : 'bg-surface-elevated text-text-muted border-border hover:text-text'}`}
+                            >
+                                All
+                            </button>
+                            <button
+                                onClick={() => setConversationFilter('unread')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest border transition-colors ${conversationFilter === 'unread' ? 'bg-accent-light text-accent border-accent/25' : 'bg-surface-elevated text-text-muted border-border hover:text-text'}`}
+                            >
+                                Unread
                             </button>
                         </div>
                     </div>

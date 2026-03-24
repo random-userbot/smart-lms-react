@@ -56,6 +56,11 @@ class Settings(BaseSettings):
 
     # SQL / Performance
     SQL_ECHO: bool = False
+    DB_POOL_SIZE: int = 3
+    DB_MAX_OVERFLOW: int = 2
+    DB_POOL_RECYCLE_SECONDS: int = 1800
+    DB_CONNECT_TIMEOUT_SECONDS: float = 10.0
+    DB_COMMAND_TIMEOUT_SECONDS: float = 30.0
 
     # Local media storage (store file path in DB, bytes on disk/object store)
     UPLOAD_DIR: str = "./uploads"

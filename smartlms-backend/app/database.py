@@ -13,8 +13,16 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.SQL_ECHO,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_recycle=settings.DB_POOL_RECYCLE_SECONDS,
+    connect_args={
+        "timeout": settings.DB_CONNECT_TIMEOUT_SECONDS,
+        "command_timeout": settings.DB_COMMAND_TIMEOUT_SECONDS,
+        "server_settings": {
+            "application_name": "smartlms-backend",
+        },
+    },
 )
 
 # Async session factory
