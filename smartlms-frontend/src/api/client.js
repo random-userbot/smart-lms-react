@@ -139,7 +139,8 @@ export const engagementAPI = {
     getLiveWatchers: (lectureId, params) => api.get(`/api/engagement/live-watchers/${lectureId}`, { params }),
     getModelInfo: () => api.get('/api/engagement/model-info'),
     listModels: () => api.get('/api/engagement/models'),
-    inferModel: (data) => api.post('/api/engagement/models/infer', data),
+    // High timeout for free-tier model swapping/loading
+    inferModel: (data) => api.post('/api/engagement/models/infer', data, { timeout: 60000 }),
 };
 
 // ─── Quizzes ────────────────────────────────────────────
