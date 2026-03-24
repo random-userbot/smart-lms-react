@@ -305,7 +305,10 @@ class ExportModelRegistry:
 
     def _get_or_load_export_model(self, model_id: str):
         if model_id in self._loaded_models:
-            return self._loaded_models[model_id]
+            # Move to end (LRU)
+            model = self._loaded_models.pop(model_id)
+            self._loaded_models[model_id] = model
+            return model
 
         if not model_id.startswith("export::"):
             raise ValueError("Not an export model id")
@@ -315,13 +318,32 @@ class ExportModelRegistry:
         if not loader or not keras:
             raise RuntimeError("TensorFlow runtime is unavailable. Install tensorflow-cpu to use exported models.")
 
+        # Aggressive memory management for free-tier hosting
+        # Only allow 1 loaded model at a time.
+        if len(self._loaded_models) >= 1:
+            print("[MEMORY] Clearing export model cache to prevent OOM...", flush=True)
+            self._loaded_models.clear()
+            keras.backend.clear_session()
+            import gc
+            gc.collect()
+
         folder_name = model_id.split("::", 1)[1]
         model_file = self.export_dir / folder_name / "best_model.h5"
         if not model_file.exists():
             raise FileNotFoundError(f"Model file not found: {model_file}")
 
         try:
+            print(f"[MEMORY] Loading model {folder_name}...", flush=True)
             model = loader.load_model_with_custom_layers(str(model_file), compile=False)
+            self._loaded_models[model_id] = model
+            return model
+        except Exception as e:
+            print(f"[MEMORY] FAILED to load model {folder_name}: {e}", flush=True)
+            # Try to cleanup if load failed halfway
+            keras.backend.clear_session()
+            import gc
+            gc.collect()
+            raise RuntimeError(f"Failed to load model architecture: {e}")
         except Exception as exc:
             msg = str(exc)
             lambda_blocked = "Lambda" in msg or "safe_mode=False" in msg or "unsafe_deserialization" in msg
