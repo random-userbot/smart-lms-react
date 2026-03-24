@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import importlib.util
 import json
+import os
 
 import numpy as np
 
@@ -41,7 +42,9 @@ class RuntimeModelInfo:
 
 class ExportModelRegistry:
     def __init__(self):
-        self.root = Path(__file__).resolve().parents[3]
+        # Path is app/ml/export_inference_registry.py
+        # parents[0]=ml, [1]=app, [2]=smartlms-backend
+        self.root = Path(__file__).resolve().parents[2]
         self.export_dir = self.root / "export"
         self._model_loader = None
         self._keras = None
@@ -318,10 +321,18 @@ class ExportModelRegistry:
         if not loader or not keras:
             raise RuntimeError("TensorFlow runtime is unavailable. Install tensorflow-cpu to use exported models.")
 
-        # Aggressive memory management for free-tier hosting
-        # Only allow 1 loaded model at a time.
-        if len(self._loaded_models) >= 1:
-            print("[MEMORY] Clearing export model cache to prevent OOM...", flush=True)
+        # Aggressive memory management for free-tier hosting (Render/Railway/etc.)
+        # Only allow 1 loaded model at a time to prevent OOM kills.
+        # But allow override via env var if running on machine with more RAM.
+        try:
+            DEFAULT_MAX_MODELS = int(os.getenv("MAX_LOADED_MODELS", "1"))
+        except ValueError:
+            DEFAULT_MAX_MODELS = 1
+        
+        # Simple LRU: if full, clear oldest (or all, for simplicity) 
+        if len(self._loaded_models) >= DEFAULT_MAX_MODELS:
+            # For simplicity, clear all to avoid complex LRU logic here. 
+            print(f"[MEMORY] Cache limit ({DEFAULT_MAX_MODELS}) reached. Clearing loaded models...", flush=True)
             self._loaded_models.clear()
             keras.backend.clear_session()
             import gc
