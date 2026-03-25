@@ -177,6 +177,38 @@ def _expected_score_from_probabilities(probabilities: List[float]) -> float:
     return (expected_class / max_class) * 100.0
 
 
+def _scores_log_summary(result: Any) -> str:
+    """Return a compact score string from an inference result for terminal logging."""
+    try:
+        if not isinstance(result, dict):
+            return ""
+        out = result.get("output", result)
+        if not isinstance(out, dict):
+            return ""
+        # XGBoost output format: engagement/boredom/confusion/frustration are direct floats
+        if isinstance(out.get("engagement"), (int, float)):
+            return (
+                f" E={float(out.get('engagement', 0)):.0f}%"
+                f" B={float(out.get('boredom', 0)):.0f}%"
+                f" C={float(out.get('confusion', 0)):.0f}%"
+                f" F={float(out.get('frustration', 0)):.0f}%"
+            )
+        # Export model format: dimensions dict with probabilities per class
+        dims = out.get("dimensions", {})
+        if dims:
+            scores = _extract_export_scores(result)
+            if scores:
+                return (
+                    f" E={scores.get('engagement', 0):.0f}%"
+                    f" B={scores.get('boredom', 0):.0f}%"
+                    f" C={scores.get('confusion', 0):.0f}%"
+                    f" F={scores.get('frustration', 0):.0f}%"
+                )
+    except Exception:
+        pass
+    return ""
+
+
 def _extract_export_scores(export_result: Dict[str, Any]) -> Optional[Dict[str, float]]:
     """Extract comparable 0-100 per-dimension scores from export model output."""
     output = export_result.get("output", {}) if isinstance(export_result, dict) else {}
@@ -924,9 +956,10 @@ async def infer_with_selected_model(
             features=[f.model_dump() for f in request.features],
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
-        logger.info("[MODEL_INFER_OK] model_id=%s elapsed_ms=%.1f", request.model_id, elapsed_ms)
+        scores_summary = _scores_log_summary(result)
+        logger.info("[MODEL_INFER_OK] model_id=%s elapsed_ms=%.1f%s", request.model_id, elapsed_ms, scores_summary)
         print(
-            f"[MODEL_INFER_OK] model_id={request.model_id} elapsed_ms={elapsed_ms:.1f}",
+            f"[MODEL_INFER_OK] model_id={request.model_id} elapsed_ms={elapsed_ms:.1f}{scores_summary}",
             flush=True,
         )
         return result
