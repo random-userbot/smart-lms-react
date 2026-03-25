@@ -29,6 +29,8 @@ function LiveEngagementTestPage() {
   const [liveResult, setLiveResult] = useState(null);
   const [ensembleResults, setEnsembleResults] = useState(null);
   const [ensembleLog, setEnsembleLog] = useState([]);
+  const [liveModelResults, setLiveModelResults] = useState({});
+  const [ensembleRunning, setEnsembleRunning] = useState(false);
   const [latestFeature, setLatestFeature] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
   const [playerError, setPlayerError] = useState(false);
@@ -207,6 +209,8 @@ function LiveEngagementTestPage() {
       ensembleInFlightRef.current = true;
       setError('');
       setEnsembleResults(null);
+      setLiveModelResults({});
+      setEnsembleRunning(true);
       setStatus('Running ensemble voting across all models...');
       appendEnsembleLog(`Starting ensemble run with ${modelsToRun.length} models and ${batch.length} features`);
       const results = {};
@@ -216,12 +220,15 @@ function LiveEngagementTestPage() {
         const modelNotes = String(model?.notes || '').toLowerCase();
         if (model.status === 'error') {
           appendEnsembleLog(`Skipping ${model.model_id} (status=error)`);
+          setLiveModelResults((prev) => ({ ...prev, [model.model_id]: { name: model.name, family: model.family, status: 'skipped', reason: 'status=error' } }));
           continue;
         }
         if (modelNotes.includes('biased')) {
           appendEnsembleLog(`Skipping ${model.model_id} (biased artifact)`);
+          setLiveModelResults((prev) => ({ ...prev, [model.model_id]: { name: model.name, family: model.family, status: 'skipped', reason: 'biased' } }));
           continue;
         }
+        setLiveModelResults((prev) => ({ ...prev, [model.model_id]: { name: model.name, family: model.family, status: 'running' } }));
         try {
           appendEnsembleLog(`Running ${model.model_id}`);
           const res = await engagementAPI.inferModel({
@@ -233,6 +240,7 @@ function LiveEngagementTestPage() {
             .every((k) => Number(normalizedScores?.[k] || 0) === 0);
           if (zeroSignal) {
             appendEnsembleLog(`Skipping ${model.model_id} (zero-signal output)`);
+            setLiveModelResults((prev) => ({ ...prev, [model.model_id]: { ...prev[model.model_id], status: 'skipped', reason: 'zero-signal' } }));
             continue;
           }
           results[model.model_id] = {
@@ -242,6 +250,7 @@ function LiveEngagementTestPage() {
             family: model.family,
             status: model.status,
           };
+          setLiveModelResults((prev) => ({ ...prev, [model.model_id]: { name: model.name, family: model.family, status: 'success', scores: normalizedScores } }));
           appendEnsembleLog(`Success ${model.model_id} -> E:${normalizedScores.engagement}% B:${normalizedScores.boredom}% C:${normalizedScores.confusion}% F:${normalizedScores.frustration}%`);
         } catch (err) {
           const detail = err?.response?.data?.detail || err.message;
@@ -252,6 +261,7 @@ function LiveEngagementTestPage() {
             family: model.family,
             status: 'error',
           };
+          setLiveModelResults((prev) => ({ ...prev, [model.model_id]: { name: model.name, family: model.family, status: 'error', error: detail } }));
         }
       }
       
@@ -301,6 +311,7 @@ function LiveEngagementTestPage() {
       appendEnsembleLog(`Ensemble failed: ${detail}`);
     } finally {
       ensembleInFlightRef.current = false;
+      setEnsembleRunning(false);
     }
   };
 
@@ -455,6 +466,7 @@ function LiveEngagementTestPage() {
     setSelectedModelOutput(null);
     setEnsembleResults(null);
     setEnsembleLog([]);
+    setLiveModelResults({});
     setIsRunning(true);
     setStatus('Collecting camera features...');
   };
@@ -846,6 +858,10 @@ function LiveEngagementTestPage() {
         </pre>
       </section>
 
+      {(ensembleRunning || Object.keys(liveModelResults).length > 0) && (
+        <LiveModelResultsPanel liveModelResults={liveModelResults} ensembleRunning={ensembleRunning} />
+      )}
+
       {ensembleResults && (
         <section style={panelStyle}>
           <h2 style={h2}>🗳️ Ensemble Voting Results</h2>
@@ -935,9 +951,7 @@ function LiveEngagementTestPage() {
 
       <section style={panelStyle}>
         <h2 style={h2}>Ensemble Run Log</h2>
-        <pre style={{ margin: 0, color: '#0f172a', fontSize: 12, whiteSpace: 'pre-wrap', background: 'rgba(255,255,255,0.9)', borderRadius: 10, border: '1px solid #cbd5e1', padding: 12, maxHeight: 220, overflowY: 'auto' }}>
-          {(ensembleLog.length ? ensembleLog.join('\n') : 'No ensemble runs yet. Click "Ensemble Voting" to start.').toString()}
-        </pre>
+        <EnsembleTerminal lines={ensembleLog} />
       </section>
 
     </main>
@@ -1099,5 +1113,104 @@ const themeVars = {
   '--color-accent': '#2563eb',
   '--shadow-lg': '0 18px 32px rgba(15, 23, 42, 0.18)',
 };
+
+function EnsembleTerminal({ lines }) {
+  const lineColor = (line) => {
+    if (/Success|complete|OK/i.test(line)) return '#4ade80';
+    if (/Failed|Error|FAIL/i.test(line)) return '#f87171';
+    if (/Skipping|biased|zero-signal|warning/i.test(line)) return '#fbbf24';
+    if (/Starting|Running|Reload|ensemble/i.test(line)) return '#60a5fa';
+    return '#cbd5e1';
+  };
+  return (
+    <div
+      style={{
+        background: '#0d1117',
+        borderRadius: 10,
+        border: '1px solid #30363d',
+        padding: '12px 14px',
+        maxHeight: 260,
+        overflowY: 'auto',
+        fontFamily: '"Cascadia Code","Fira Code","JetBrains Mono","Consolas",monospace',
+        fontSize: 12,
+        lineHeight: 1.7,
+      }}
+    >
+      {lines.length === 0 ? (
+        <span style={{ color: '#6e7681' }}>▶ No ensemble runs yet. Click "Ensemble Voting" to start.</span>
+      ) : (
+        lines.map((line, i) => (
+          <div key={`${i}-${line.slice(0, 20)}`} style={{ color: lineColor(line), wordBreak: 'break-all' }}>{line}</div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function LiveModelResultsPanel({ liveModelResults, ensembleRunning }) {
+  const entries = Object.entries(liveModelResults);
+  const statusIcon = (s) => ({ running: '⏳', success: '✅', skipped: '⏭️', error: '❌' }[s] || '❌');
+  const statusLabel = (s) => ({ running: 'Running', success: 'Success', skipped: 'Skipped', error: 'Error' }[s] || 'Error');
+  const statusBg = (s) => ({
+    success: 'rgba(16,185,129,0.07)',
+    error: 'rgba(239,68,68,0.07)',
+    skipped: 'rgba(245,158,11,0.06)',
+    running: 'rgba(37,99,235,0.06)',
+  }[s] || 'transparent');
+
+  return (
+    <section style={panelStyle}>
+      <h2 style={{ ...h2, display: 'flex', alignItems: 'center', gap: 8 }}>
+        ⚡ Live Multi-Model Inference
+        {ensembleRunning && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb', background: '#dbeafe', border: '1px solid #93c5fd', borderRadius: 6, padding: '2px 8px' }}>
+            Running…
+          </span>
+        )}
+      </h2>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {entries.map(([modelId, result]) => (
+          <div
+            key={modelId}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              borderRadius: 8, border: '1px solid #e2e8f0',
+              padding: '10px 14px',
+              background: statusBg(result.status),
+              transition: 'background 0.3s',
+            }}
+          >
+            <div aria-label={statusLabel(result.status)} style={{ flexShrink: 0, fontSize: 16, width: 22, textAlign: 'center' }}>{statusIcon(result.status)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {result.name || modelId}
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{result.family}</div>
+            </div>
+            {result.status === 'running' && (
+              <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 700 }}>Running…</div>
+            )}
+            {result.status === 'success' && result.scores && (
+              <div style={{ display: 'flex', gap: 10, fontSize: 12, flexShrink: 0 }}>
+                <span>E:<b style={{ color: '#16a34a' }}>{result.scores.engagement}%</b></span>
+                <span>B:<b style={{ color: '#db2777' }}>{result.scores.boredom}%</b></span>
+                <span>C:<b style={{ color: '#d97706' }}>{result.scores.confusion}%</b></span>
+                <span>F:<b style={{ color: '#dc2626' }}>{result.scores.frustration}%</b></span>
+              </div>
+            )}
+            {result.status === 'skipped' && (
+              <div style={{ fontSize: 11, color: '#92400e', fontWeight: 600 }}>{result.reason}</div>
+            )}
+            {result.status === 'error' && (
+              <div style={{ fontSize: 11, color: '#dc2626', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {result.error}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 createRoot(document.getElementById('root')).render(<LiveEngagementTestPage />);
